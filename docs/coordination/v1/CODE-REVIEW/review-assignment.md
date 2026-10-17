@@ -1,5 +1,5 @@
 # Assignment CODE-REVIEW (role: reviewer)
-Task id: CODE-REVIEW. Workspace: this worktree (branch ruach/code-review) at 2f8e4f5 (== origin/ruach/lucifer-v1-orchestrator, a public GitHub repo). Review the whole repository: Amp.Nfc/**, Amp.Nfc.Tests/**, deploy/**, .github/workflows/ci.yml, docs/**, README.md, example JSON files, blackboards/**, BLACKBOARD.md, git history reachable from HEAD.
+Task id: CODE-REVIEW. Workspace: this worktree (branch ruach/code-review) at <old-sha> (== origin/ruach/lucifer-v1-orchestrator, a public GitHub repo). Review the whole repository: Amp.Nfc/**, Amp.Nfc.Tests/**, deploy/**, .github/workflows/ci.yml, docs/**, README.md, example JSON files, blackboards/**, BLACKBOARD.md, git history reachable from HEAD.
 Dimensions (report findings under each; say "none found" where applicable):
 1. Simplicity: needless abstraction, duplication, dead code, over-engineering, anything that could be smaller without losing behaviour.
 2. Readability: naming, method/file size, comments that lie or restate code, consistency, test clarity.

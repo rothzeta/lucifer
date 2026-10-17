@@ -18,7 +18,7 @@ verification:
   - "Every variable, default and range in README.md:96-114 compared with Options.cs and CommandLine.HelpText; commands/flags with CommandLine.cs; exit codes with Cli.cs; thresholds with ReaderWatch.cs:21-33, InputControls.cs:75, Mpv.cs:153-154,367, InputMapping.cs:15; unit/env/tmpfiles/udev/maint/publish facts with deploy/*; install summary with INSTALL.md sections 1-3, 6, 7"
   - "All 14 relative links and paths in README.md exist; anchor #hardware-and-software-inventory matches its heading"
   - "Inventory 'planned' values traced to BLACKBOARD.md:49, blackboards/ACCEPTANCE.md:11-18, blackboards/DEVICE.md:39, docs/reviews/2026-10-17-v1-review.md:17, TagCommands.cs:70, deploy/99-lucifer-nfc.rules.example"
-  - "Privacy scan (grep for <home-root>/, usernames, emails, tokens, keys, credential URLs, /tmp and /opt paths) over README.md and docs/coordination/**"
+  - "Privacy scan (grep for home paths, usernames, emails, tokens, keys, credential URLs, /tmp and /opt paths) over README.md and docs/coordination/**"
 review:
   - "OPTIONAL F1 docs/coordination/**: local username and home path <home>/.dotnet in 25 files (list in report body); not a secret, owner decision before public push"
   - "OPTIONAL F2 docs/coordination/v1/task-record.md:76: GitHub account rothzeta and git@github.com:rothzeta/lucifer.git; public anyway once pushed, owner awareness only"

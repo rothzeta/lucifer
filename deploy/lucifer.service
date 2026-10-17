@@ -37,8 +37,11 @@ KillSignal=SIGTERM
 TimeoutStopSec=30
 NoNewPrivileges=yes
 # Conservative hardening, checked with systemd-analyze verify only, not on a device.
-# PrivateTmp and PrivateDevices are deliberately not set: lucifer-maint shares the IPC
-# directory and lock, and the unit needs /dev/tty*, /dev/input and /dev/snd.
+# PrivateTmp is deliberately not set: it would give the service a writable private /tmp, so an
+# unset LUCIFER_IPC_DIR would quietly use /tmp/lucifer-<user> that lucifer-maint cannot see (the
+# shared directory is /run/lucifer, which PrivateTmp does not affect). With /tmp read-only under
+# ProtectSystem=strict an unset LUCIFER_IPC_DIR fails loudly instead. PrivateDevices is not set
+# because the unit needs /dev/tty*, /dev/input and /dev/snd.
 # /run/lucifer stays writable through RuntimeDirectory; /var/lib/lucifer holds the catalogue.
 ProtectSystem=strict
 ReadWritePaths=/var/lib/lucifer

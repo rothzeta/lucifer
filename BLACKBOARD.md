@@ -26,7 +26,7 @@ The core playback path is present in source. V1 is complete when the [acceptance
 4. Complete **LUC-04** before judging scan reliability. The current loop both suppresses retries after failure and rearms after a single uncertain read.
 5. Keep implementation changes small. Extract responsibilities while fixing behaviour.
 
-**Review baseline:** `38c01feb7b528088dff57e3e95374c75e0bb3be8`, 17 October 2026. See the [source review](docs/reviews/2026-10-17-v1-review.md).
+**Review baseline:** `f49202a22613ff87320568ab0fe55fe90012de21`, 17 October 2026. See the [source review](docs/reviews/2026-10-17-v1-review.md).
 
 ## Active boards
 

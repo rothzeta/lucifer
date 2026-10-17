@@ -22,7 +22,7 @@ discoveries:
   - "Inconsistency: the built executable is Amp.Nfc, but help text and the old README/input-map example say amp-nfc. README documents Amp.Nfc and notes the alias; source untouched."
   - "Option scope: only LUCIFER_NFC_DEVICE, LUCIFER_IPC_DIR and LUCIFER_READER_TIMEOUT_SECONDS are validated for tag modes; the rest (MPV, audio, catalogue, timeouts, input map/required/debounce) only for play and check. LUCIFER_INPUT_DEVICE is also read by input inspect."
   - "The writer prompt says NTAG215 (TagCommands.cs) while TagWriter accepts any Ultralight/NTAG-compatible card; the README lists NTAG215 as planned and unverified."
-  - "The old README's status text (prototype, separate writer, baseline commit 38c01fe) was stale and was replaced; the old reference to a baseline with no successful build was dropped."
+  - "The old README's status text (prototype, separate writer, baseline commit f49202a) was stale and was replaced; the old reference to a baseline with no successful build was dropped."
   - "deploy/lucifer.service Documentation points at /opt/lucifer/current/INSTALL.md, but the package places INSTALL.md at the archive root, so it resolves only under the release directory layout; not changed."
   - "No device facts, hostnames, versions or addresses were added; Actual inventory cells are _pending (LUC-08)_."
 blockers: []

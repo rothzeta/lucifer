@@ -407,9 +407,10 @@ public class PlaySessionTests : IDisposable
     public async Task Mpv_exiting_after_a_stop_was_requested_is_a_clean_exit_not_a_fatal_failure()
     {
         // KillMode=mixed leaves mpv to the app, but a SIGTERM that reaches mpv first must still
-        // not turn an ordinary stop into exit 1. The poll below makes the order certain: mpv is
-        // dead and the player has had time to notice before the stop is requested. (The same death
-        // with no stop is a fatal failure: Essential_mpv_death_after_startup_is_a_fatal_failure.)
+        // not turn an ordinary stop into exit 1. mpv is dead and the player has recorded the loss
+        // before the stop is requested, inside the reader step. The loop then leaves through the
+        // cancelled tick delay, so the recorded loss is never turned into a failure. (The same
+        // death with no stop is a fatal failure: Essential_mpv_death_after_startup_is_a_fatal_failure.)
         for (var round = 0; round < 3; round++)
         {
             var options = Options(ChildScript());

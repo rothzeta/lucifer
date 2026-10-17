@@ -23,13 +23,13 @@ printf '%s\n' \
   '' \
   '   # indented comment' \
   '   ' \
-  'NAVIDROME_PASSWORD=pa$$ w0rd $HOME `id` q n=x' \
+  'NAVIDROME_PASSWORD=pa$$ w0rd $HOME `id` q n=x a"b"c' \
   'LUCIFER_IPC_DIR=/run/lucifer' > "$tmp/env"
 
 out="$(LUCIFER_ENV_FILE="$tmp/env" "$tmp/lucifer-maint" tag read)"
 fail() { echo "FAIL: $1" >&2; echo "$out" >&2; exit 1; }
 # shellcheck disable=SC2016
-[ "$(grep '^PW=' <<<"$out")" = 'PW=[pa$$ w0rd $HOME `id` q n=x]' ] || fail "password not literal"
+[ "$(grep '^PW=' <<<"$out")" = 'PW=[pa$$ w0rd $HOME `id` q n=x a"b"c]' ] || fail "password not literal"
 grep -qx 'IPC=\[/run/lucifer\]' <<<"$out" || fail "IPC dir not passed"
 grep -qx 'args=tag read' <<<"$out" || fail "arguments not passed"
 grep -qx 'EXT=\[unset\]' <<<"$out" || fail "unexpected variable"
@@ -52,6 +52,12 @@ refused 'A="SECRET"' double-quotes
 refused "A='SECRET'" single-quotes
 refused 'A="SECRET' open-quote
 refused '  A=SECRET' indented-line
+refused 'A=SE\rCRET' carriage-return-inside
+refused 'A=SE\001CRET' control-character
+refused 'A=SE\033CRET' escape
+refused 'A=SE\377CRET' invalid-utf8
+printf 'A=SE\tCRET\n' > "$tmp/tab"
+LUCIFER_ENV_FILE="$tmp/tab" "$tmp/lucifer-maint" check >/dev/null || { echo "FAIL: tab inside a value refused" >&2; exit 1; }
 printf 'last=noeol' > "$tmp/noeol"
 LUCIFER_ENV_FILE="$tmp/noeol" "$tmp/lucifer-maint" check >/dev/null || { echo "FAIL: missing final newline" >&2; exit 1; }
 echo "lucifer-maint: ok"

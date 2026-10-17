@@ -34,10 +34,14 @@ public static class IpcDirectoryPolicy
         if (parent is not null)
             Directory.CreateDirectory(parent);
 
-        if (!Directory.Exists(path))
+        try
         {
-            try { Directory.CreateDirectory(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute); }
-            catch (IOException) when (Directory.Exists(path)) { } // lost a race: verify what is there
+            Directory.CreateDirectory(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+        catch (IOException)
+        {
+            // A dangling symlink or a file is in the way.
+            throw Unsafe(path, new DirectoryInfo(path).LinkTarget is not null ? "is a symbolic link" : "is not a directory");
         }
 
         var info = new DirectoryInfo(path);
