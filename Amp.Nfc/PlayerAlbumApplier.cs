@@ -2,8 +2,9 @@ namespace Amp.Nfc;
 
 /// <summary>
 /// Narrow bridge from a selected release to the player. Preparation fetches the track list and
-/// leaves current audio alone; only CommitAsync replaces the queue. LUC-07 completes the failure
-/// handling after queue replacement.
+/// leaves current audio alone and validates every track; only CommitAsync replaces the queue, as
+/// one operation through the <see cref="PlaybackOwner"/> (generation check, failure policy and
+/// serialization live there and in <see cref="Mpv.LoadAlbumAsync"/>).
 /// </summary>
 sealed class PlayerAlbumApplier(
     string cataloguePath,
@@ -11,6 +12,9 @@ sealed class PlayerAlbumApplier(
     Mpv mpv,
     TextWriter output) : IAlbumApplier
 {
+    // The owner is stateless, so this one and any LUC-09 owner over the same Mpv share its lock.
+    private readonly PlaybackOwner player = new(mpv);
+
     public async Task<IPreparedAlbum> PrepareAsync(ReleaseId release, CancellationToken cancellationToken)
     {
         // The catalogue is read per selection so an edited file applies without a restart.
@@ -51,18 +55,29 @@ sealed class PlayerAlbumApplier(
                 ? $"  {track.Disc}.{track.Number:00} {track.Title}"
                 : $"  - {track.Title}");
 
+        // Everything is checked before the queue is touched. Messages never include the URLs.
+        if (tracks.Select(track => track.Id).Distinct().Count() != tracks.Count)
+            throw new SelectionRejectedException("Album lists the same track twice. Current album keeps playing.");
+
         var auth = navidrome.CreateAuthentication();
         var urls = tracks.Select(track => navidrome.CreateStreamUrl(track.Id, auth)).ToArray();
 
-        return new Prepared(mpv, urls, tracks.Count, output);
+        if (urls.Any(url => !Uri.TryCreate(url, UriKind.Absolute, out var uri)
+                || uri.Scheme is not ("http" or "https")))
+            throw new SelectionRejectedException("Album has a track with no usable stream address. Current album keeps playing.");
+
+        return new Prepared(player, urls, tracks.Count, output);
     }
 
-    sealed class Prepared(Mpv mpv, string[] urls, int count, TextWriter output) : IPreparedAlbum
+    sealed class Prepared(PlaybackOwner player, string[] urls, int count, TextWriter output) : IPreparedAlbum
     {
+        // The token is the controller's "still the selection" signal; the owner checks it right
+        // before the first mpv command. "Playing" here means the queue was accepted: whether audio
+        // starts is reported separately through the player status.
         public async Task CommitAsync(CancellationToken cancellationToken)
         {
-            await mpv.LoadAlbumAsync(urls, cancellationToken);
-            output.WriteLine($"Playing {count} tracks.");
+            await player.ApplyAlbumAsync(urls, cancellationToken);
+            output.WriteLine($"Queued {count} tracks; waiting for mpv to start playback.");
         }
     }
 }
