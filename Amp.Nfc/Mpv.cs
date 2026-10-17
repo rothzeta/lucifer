@@ -7,7 +7,7 @@ namespace Amp.Nfc;
 
 public enum MpvStatus { Idle, Loading, Playing, Paused, Ended, Failed }
 
-public enum MpvFailureKind { StartFailed, ProcessExited, Timeout, ConnectionClosed, Malformed, CommandError, LoadFailed }
+public enum MpvFailureKind { StartFailed, ProcessExited, Timeout, ConnectionClosed, Malformed, CommandError, LoadFailed, AlbumIncomplete }
 
 public sealed class MpvException(MpvFailureKind kind, string message, Exception? inner = null)
     : Exception(message, inner)
@@ -53,6 +53,7 @@ public sealed class Mpv : IDisposable
     private bool _paused;
     private bool _selected;
     private bool _unfiltered;
+    private bool _needsReconcile;
     private Timer? _streamTimer;
     private long _timerSeq;
 
@@ -100,10 +101,8 @@ public sealed class Mpv : IDisposable
         RefuseLiveSocketOrRemoveStale(socketPath, timeouts);
 
         var startInfo = new ProcessStartInfo { FileName = mpvPath, UseShellExecute = false };
-        startInfo.ArgumentList.Add("--idle=yes");
-        startInfo.ArgumentList.Add("--no-video");
-        startInfo.ArgumentList.Add($"--audio-device={audioDevice}");
-        startInfo.ArgumentList.Add($"--input-ipc-server={socketPath}");
+        foreach (var argument in LaunchArguments(audioDevice, socketPath))
+            startInfo.ArgumentList.Add(argument);
 
         Process child;
         try
@@ -129,6 +128,20 @@ public sealed class Mpv : IDisposable
             throw;
         }
     }
+
+    /// <summary>
+    /// Playback stops at the end of the album: neither the playlist nor a single file repeats
+    /// (mpv's default, stated so a user's mpv.conf cannot change the product behaviour).
+    /// </summary>
+    internal static IReadOnlyList<string> LaunchArguments(string audioDevice, string socketPath) =>
+    [
+        "--idle=yes",
+        "--no-video",
+        "--loop-playlist=no",
+        "--loop-file=no",
+        $"--audio-device={audioDevice}",
+        $"--input-ipc-server={socketPath}",
+    ];
 
     private sealed class SocketOwnership { public bool Owned; }
 
@@ -255,20 +268,105 @@ public sealed class Mpv : IDisposable
 
     // ---- commands ----------------------------------------------------------
 
+    /// <summary>
+    /// Replaces the queue with <paramref name="urls"/> as one operation and leaves playback unpaused.
+    /// <paramref name="generation"/> is the caller's "still wanted" token: it is honoured while
+    /// waiting for the operation lock and once more immediately before the first command, never
+    /// after the queue has started to change. From the first command on, the sequence runs to
+    /// completion under the IPC deadlines, so a newer selection cannot leave a half-built queue.
+    ///
+    /// Failure policy: a rejected first command changed nothing and is rethrown as is. Any later
+    /// failure (a rejected append, a lost or timed-out reply, a failed unpause) leaves the queue
+    /// unknown, so the status becomes Failed ("album load incomplete"), the player is stopped to
+    /// clear the queue, and an <see cref="MpvFailureKind.AlbumIncomplete"/> exception is thrown.
+    /// If the stop cannot be confirmed either, the next load must first stop successfully and sends
+    /// no playlist command while it cannot; a load is never replayed on top of an unknown queue.
+    /// </summary>
     public async Task LoadAlbumAsync(
         IReadOnlyList<string> urls,
-        CancellationToken cancellationToken)
+        CancellationToken generation)
     {
         if (urls.Count == 0)
             return;
 
+        await _operations.WaitAsync(generation);
+        try
+        {
+            generation.ThrowIfCancellationRequested(); // the generation check, before any mutation
+
+            if (_needsReconcile)
+                await StopAndClearAsync(); // throws without having changed the queue
+
+            var none = CancellationToken.None;
+            var mutated = false;
+            try
+            {
+                await SendAsync(["loadfile", urls[0], "replace"], BeginSelection, none);
+                mutated = true;
+
+                foreach (var url in urls.Skip(1))
+                    await SendAsync(["loadfile", url, "append"], AddEntry, none);
+
+                // A paused previous album would otherwise hold the new one paused.
+                await SendAsync(["set_property", "pause", false], null, none);
+            }
+            catch (MpvException ex) when (Lost is null && (mutated || ex.Kind != MpvFailureKind.CommandError))
+            {
+                await FailIncompleteAsync(ex);
+                throw new MpvException(MpvFailureKind.AlbumIncomplete,
+                    $"album load incomplete ({ex.Message}); playback stopped", ex);
+            }
+        }
+        finally { _operations.Release(); }
+    }
+
+    // Caller holds _operations.
+    private async Task FailIncompleteAsync(MpvException cause)
+    {
+        Update(() =>
+        {
+            DisarmStreamDeadline();
+            _selected = false; // observations of the abandoned entries no longer count
+            _needsReconcile = true;
+            return (MpvStatus.Failed, $"album load incomplete: {cause.Message}");
+        });
+
+        try { await StopAndClearAsync(); }
+        catch (MpvException) { /* stays _needsReconcile; the next load reconciles first */ }
+    }
+
+    // Caller holds _operations. mpv's stop also clears the playlist.
+    private async Task StopAndClearAsync()
+    {
+        await SendAsync(["stop"], null, CancellationToken.None);
+        lock (_gate) _needsReconcile = false;
+    }
+
+    /// <summary>
+    /// Runs one transport command if the observed status allows it, serialized with album loads.
+    /// Returns false when the command does not apply to the current status (nothing is sent).
+    /// </summary>
+    public async Task<bool> TransportAsync(TransportCommand command, CancellationToken cancellationToken)
+    {
         await _operations.WaitAsync(cancellationToken);
         try
         {
-            await SendAsync(["loadfile", urls[0], "replace"], BeginSelection, cancellationToken);
+            var status = Status;
+            object[]? wire = command switch
+            {
+                TransportCommand.Pause when status is MpvStatus.Playing or MpvStatus.Loading => ["set_property", "pause", true],
+                TransportCommand.Play when status == MpvStatus.Paused => ["set_property", "pause", false],
+                TransportCommand.TogglePause when status is MpvStatus.Playing or MpvStatus.Loading or MpvStatus.Paused =>
+                    ["set_property", "pause", status != MpvStatus.Paused],
+                TransportCommand.Next when status is MpvStatus.Playing or MpvStatus.Paused => ["playlist-next", "force"],
+                TransportCommand.Previous when status is MpvStatus.Playing or MpvStatus.Paused => ["playlist-prev", "force"],
+                _ => null,
+            };
+            if (wire is null)
+                return false;
 
-            foreach (var url in urls.Skip(1))
-                await SendAsync(["loadfile", url, "append"], AddEntry, cancellationToken);
+            await SendAsync(wire, null, cancellationToken);
+            return true;
         }
         finally { _operations.Release(); }
     }
@@ -449,7 +547,6 @@ public sealed class Mpv : IDisposable
             _entries.Clear();
             _selected = true;
             _unfiltered = false;
-            _paused = false;
             AddEntryLocked(reply);
             ArmStreamDeadline();
             return (MpvStatus.Loading, null);
@@ -476,6 +573,18 @@ public sealed class Mpv : IDisposable
 
         Update(() =>
         {
+            // The pause flag is player state, not selection state: a paused player stays paused
+            // across a load until mpv reports otherwise.
+            if (name == "property-change" && ev.TryGetProperty("name", out var pausedName) && pausedName.GetString() == "pause"
+                && ev.TryGetProperty("data", out var pausedData) && pausedData.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            {
+                _paused = pausedData.GetBoolean();
+                if (!_selected) return null;
+                if (_status == MpvStatus.Playing && _paused) return (MpvStatus.Paused, null);
+                if (_status == MpvStatus.Paused && !_paused) return (MpvStatus.Playing, null);
+                return null;
+            }
+
             if (!_selected || (entry is { } id && !_unfiltered && !_entries.Contains(id)))
                 return null; // not about the current selection
 
@@ -507,15 +616,6 @@ public sealed class Mpv : IDisposable
                     }
                     return null;
 
-                case "property-change":
-                    if (ev.TryGetProperty("name", out var prop) && prop.GetString() == "pause"
-                        && ev.TryGetProperty("data", out var d) && d.ValueKind is JsonValueKind.True or JsonValueKind.False)
-                    {
-                        _paused = d.GetBoolean();
-                        if (_status == MpvStatus.Playing && _paused) return (MpvStatus.Paused, null);
-                        if (_status == MpvStatus.Paused && !_paused) return (MpvStatus.Playing, null);
-                    }
-                    return null;
             }
 
             return null;

@@ -70,6 +70,11 @@ static class PlaySession
             mpvTimeouts);
         hooks.Register(mpv.Dispose);
 
+        // Player status comes from mpv evidence, so this is where a failed or finished album shows.
+        mpv.StatusChanged += status => output.WriteLine(status == MpvStatus.Failed
+            ? $"Player: failed — {mpv.FailureDetail}"
+            : $"Player: {status.ToString().ToLowerInvariant()}");
+
         var watch = new ReaderWatch(policy, health, TimeProvider.System);
         var controller = new SelectionController(
             new WatchedReader(reader, watch),
