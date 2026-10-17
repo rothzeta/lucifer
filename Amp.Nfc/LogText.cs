@@ -1,14 +1,22 @@
 using System.Globalization;
+using System.Text;
 
 namespace Amp.Nfc;
 
 static class LogText
 {
-    /// <summary>Server- or tag-supplied text for the journal: control and Unicode format characters (including ESC, line breaks and bidi overrides) become '?'.</summary>
-    public static string Clean(string? text) =>
-        text is null ? "" : string.Create(text.Length, text, static (span, source) =>
-        {
-            for (var i = 0; i < span.Length; i++)
-                span[i] = char.IsControl(source[i]) || char.GetUnicodeCategory(source[i]) == UnicodeCategory.Format ? '?' : source[i];
-        });
+    /// <summary>Server- or tag-supplied text for the journal: control, Unicode format (including supplementary-plane tag characters and bidi overrides) and line or paragraph separator characters become '?'.</summary>
+    public static string Clean(string? text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return "";
+        var cleaned = new StringBuilder(text.Length);
+        foreach (var rune in text.EnumerateRunes())
+            cleaned.Append(Replace(rune) ? "?" : rune.ToString());
+        return cleaned.ToString();
+    }
+
+    private static bool Replace(Rune rune) =>
+        Rune.IsControl(rune) || Rune.GetUnicodeCategory(rune) is
+            UnicodeCategory.Format or UnicodeCategory.LineSeparator or UnicodeCategory.ParagraphSeparator;
 }
