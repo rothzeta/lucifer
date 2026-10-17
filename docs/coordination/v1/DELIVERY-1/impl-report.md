@@ -19,7 +19,8 @@ verification:
   - "built binary: help exit 0; bogus command exit 2; check with catalogue.example.json exit 0 (Configuration is valid)"
   - "bash deploy/test-lucifer-maint.sh: ok"
   - "git status clean after the merges and checks. Not run: publish script (not required here), Pi, mpv, systemd, GitHub Actions"
-review: "REVIEW-2 reported no blocking findings on 4bcca29 (report ruach/v1-review-2 at 8860cf0); REVIEW-1 findings F1-F8 were fixed in FIX-1. Not re-reviewed here."
+review:
+  - "REVIEW-2 reported no blocking findings on 4bcca29 (report ruach/v1-review-2 at 8860cf0); REVIEW-1 findings F1-F8 were fixed in FIX-1. Not re-reviewed here."
 discoveries:
   - "The delivered result contains the accepted changes: FIX-1 commits 4bcca29 and 5dcd4de, the INT-4 and INT-5 integrations, LUC-01..07, 09..11, and both review reports are ancestors of the delivered revision (graph below)."
   - "Device evidence (LUC-08, LUC-12) is still pending; nothing here is a hardware claim."
