@@ -11,15 +11,15 @@ public static class CommandLine
         Lucifer: NFC album player
 
         Usage:
-          amp-nfc play                          Run the player: tap a tag to play its album.
-          amp-nfc tag read                      Read the NDEF text on the tag placed on the reader.
-          amp-nfc tag write --release <uuid>    Write a MusicBrainz release identity to a tag.
-          amp-nfc check                         Validate configuration and catalogue; no reader or server access.
-          amp-nfc input inspect [--device <path>] [--count <n>]
+          Amp.Nfc play                          Run the player: tap a tag to play its album.
+          Amp.Nfc tag read                      Read the NDEF text on the tag placed on the reader.
+          Amp.Nfc tag write --release <uuid>    Write a MusicBrainz release identity to a tag.
+          Amp.Nfc check                         Validate configuration and catalogue; no reader or server access.
+          Amp.Nfc input inspect [--device <path>] [--count <n>]
                                                 Print type/code/value of input events from a controller (to find
                                                 its codes). Does not touch the reader. Device defaults to
                                                 LUCIFER_INPUT_DEVICE.
-          amp-nfc help                          Show this help.
+          Amp.Nfc help                          Show this help.
 
         The reader has one owner. Stop the player service before using `tag`, then start it again.
 

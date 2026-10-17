@@ -71,7 +71,7 @@ public sealed class LuciferOptions
             catalogue = Text("LUCIFER_CATALOGUE_PATH", "catalogue.json");
             mpvTimeout = Seconds("LUCIFER_MPV_START_TIMEOUT_SECONDS", 5);
             httpTimeout = Seconds("LUCIFER_HTTP_TIMEOUT_SECONDS", 15);
-            absence = Milliseconds("LUCIFER_ABSENCE_CONFIRM_MS", 1500, 100, 60_000, errors, env);
+            absence = Milliseconds(env, "LUCIFER_ABSENCE_CONFIRM_MS", 1500, 100, 60_000, errors);
             shutdown = ShutdownDeadline(env, errors);
             url = ServerUrl(env, errors);
             user = Required(env, "NAVIDROME_USER", errors);
@@ -89,7 +89,7 @@ public sealed class LuciferOptions
         {
             inputMap = OptionalText(env, "LUCIFER_INPUT_MAP", errors);
             inputRequired = Flag(env, "LUCIFER_INPUT_REQUIRED", errors);
-            inputDebounce = Milliseconds("LUCIFER_INPUT_DEBOUNCE_MS", 250, 0, 5000, errors, env);
+            inputDebounce = Milliseconds(env, "LUCIFER_INPUT_DEBOUNCE_MS", 250, 0, 5000, errors);
             if (inputRequired && inputDevice is null && env("LUCIFER_INPUT_DEVICE") is null)
                 errors.Add(new("LUCIFER_INPUT_DEVICE", "is required when LUCIFER_INPUT_REQUIRED is true"));
             if (inputRequired && inputMap is null && env("LUCIFER_INPUT_MAP") is null)
@@ -211,7 +211,7 @@ public sealed class LuciferOptions
     }
 
     private static TimeSpan Milliseconds(
-        string name, int fallback, int min, int max, List<FieldError> errors, Func<string, string?> env)
+        Func<string, string?> env, string name, int fallback, int min, int max, List<FieldError> errors)
     {
         var value = env(name);
         if (value is null)

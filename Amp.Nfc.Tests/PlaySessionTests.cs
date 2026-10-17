@@ -407,22 +407,37 @@ public class PlaySessionTests : IDisposable
     public async Task Mpv_exiting_after_a_stop_was_requested_is_a_clean_exit_not_a_fatal_failure()
     {
         // KillMode=mixed leaves mpv to the app, but a SIGTERM that reaches mpv first must still
-        // not turn an ordinary stop into exit 1.
+        // not turn an ordinary stop into exit 1. The poll below makes the order certain: mpv is
+        // dead and the player has had time to notice before the stop is requested. (The same death
+        // with no stop is a fatal failure: Essential_mpv_death_after_startup_is_a_fatal_failure.)
         for (var round = 0; round < 3; round++)
         {
             var options = Options(ChildScript());
             ServeSocketLater();
             using var stop = new CancellationTokenSource();
-            var run = Run(options, new ScriptedReader(), new FakeApplier(), stop.Token);
-            var pid = await ReadPid();
-            await WaitForPeer();
-            await Task.Delay(500);
+            var killed = false;
+            var reader = new ScriptedReader
+            {
+                Script = _ =>
+                {
+                    if (killed) return ReaderObservation.Absent;
+                    killed = true;
+                    var child = Process.GetProcessById(int.Parse(File.ReadAllText(PidFile).Trim()));
+                    child.Kill();
+                    child.WaitForExit();
+                    Thread.Sleep(500); // the IPC connection closes and the player records the loss
+                    stop.Cancel();
+                    return ReaderObservation.Absent;
+                },
+            };
 
-            Process.GetProcessById(pid).Kill();
-            stop.Cancel();
+            var run = Run(options, reader, new FakeApplier(), stop.Token);
+            await run.WaitAsync(TimeSpan.FromSeconds(10));
 
-            await run.WaitAsync(TimeSpan.FromSeconds(10)); // no FatalRunException
+            Assert.True(killed, "mpv was killed before the stop was requested");
+            Assert.Equal(TaskStatus.RanToCompletion, run.Status); // not a FatalRunException
             Assert.False(File.Exists(Socket));
+            Assert.False(Alive(await ReadPid()));
             foreach (var d in Enumerable.Reverse(_disposables)) d.Dispose();
             _disposables.Clear();
             File.Delete(PidFile);

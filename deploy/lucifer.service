@@ -29,12 +29,26 @@ RuntimeDirectoryPreserve=yes
 Restart=on-failure
 RestartSec=5
 # SIGTERM goes to the app only, which stops the mpv it started; whatever is
-# left in the control group is SIGKILLed when TimeoutStopSec runs out.
+# left in the control group is SIGKILLed once the app has exited, or when
+# TimeoutStopSec runs out if the app hangs.
 KillMode=mixed
 KillSignal=SIGTERM
 # Must exceed LUCIFER_SHUTDOWN_TIMEOUT_SECONDS (default 10; the app caps it at 25).
 TimeoutStopSec=30
 NoNewPrivileges=yes
+# Conservative hardening, checked with systemd-analyze verify only, not on a device.
+# PrivateTmp and PrivateDevices are deliberately not set: lucifer-maint shares the IPC
+# directory and lock, and the unit needs /dev/tty*, /dev/input and /dev/snd.
+# /run/lucifer stays writable through RuntimeDirectory; /var/lib/lucifer holds the catalogue.
+ProtectSystem=strict
+ReadWritePaths=/var/lib/lucifer
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+# AF_NETLINK: name resolution (getaddrinfo) and ALSA may query the kernel that way.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 
 [Install]
 WantedBy=multi-user.target

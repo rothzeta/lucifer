@@ -39,7 +39,7 @@ public static class ControlsConfig
     /// </summary>
     public static ControlsResolution Resolve(LuciferOptions options)
     {
-        const string hint = "There are no default event codes; discover them with `amp-nfc input inspect`.";
+        const string hint = "There are no default event codes; discover them with `Amp.Nfc input inspect`.";
 
         if (options.InputDevice is null && options.InputMapPath is null)
             return new(null, $"disabled: LUCIFER_INPUT_DEVICE and LUCIFER_INPUT_MAP are not set. {hint}", []);
