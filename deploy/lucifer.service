@@ -11,8 +11,8 @@ StartLimitBurst=5
 Type=simple
 User=lucifer
 Group=lucifer
-# Reader (serial adapter) and audio device access.
-SupplementaryGroups=dialout audio
+# Reader (serial adapter), audio device and transport-control (input) access.
+SupplementaryGroups=dialout audio input
 EnvironmentFile=/etc/lucifer/lucifer.env
 WorkingDirectory=/var/lib/lucifer
 Environment=HOME=/var/lib/lucifer

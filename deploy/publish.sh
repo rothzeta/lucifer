@@ -56,6 +56,7 @@ dotnet publish Amp.Nfc/Amp.Nfc.csproj -c Release -r "$rid" --self-contained true
 
 cp deploy/lucifer.env.example "$stage/config/lucifer.env.example"
 cp catalogue.example.json "$stage/config/catalogue.example.json"
+cp input-map.example.json "$stage/config/input-map.example.json"
 cp deploy/lucifer.service "$stage/systemd/lucifer.service"
 cp deploy/lucifer.tmpfiles.conf "$stage/systemd/lucifer.tmpfiles.conf"
 cp deploy/99-lucifer-nfc.rules.example "$stage/udev/99-lucifer-nfc.rules.example"

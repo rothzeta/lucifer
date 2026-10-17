@@ -19,7 +19,7 @@ Needs the .NET 10 SDK and network or a populated NuGet cache for the runtime pac
 deploy/publish.sh --rid linux-arm64 --version 1.0.0   # or --rid linux-arm
 ```
 
-Output in `dist/`: `lucifer-<version>-<rid>.tar.gz` and `lucifer-<version>-<rid>.tar.gz.sha256`. The archive contains `bin/` (self-contained app plus `lucifer-maint`), `config/` (env and catalogue examples), `systemd/`, `udev/`, `VERSION`, `RID` and this file. Without `--version` the name comes from `git describe`.
+Output in `dist/`: `lucifer-<version>-<rid>.tar.gz` and `lucifer-<version>-<rid>.tar.gz.sha256`. The archive contains `bin/` (self-contained app plus `lucifer-maint`), `config/` (env, catalogue and input-map examples), `systemd/`, `udev/`, `VERSION`, `RID` and this file. Without `--version` the name comes from `git describe`.
 
 Copy both files to the Pi (for example with `scp`).
 
@@ -27,6 +27,7 @@ Copy both files to the Pi (for example with `scp`).
 
 - `mpv` installed and on the service's `PATH` (or set `LUCIFER_MPV_PATH`).
 - Native libraries the self-contained app needs; check after unpacking with `ldd /opt/lucifer/current/bin/Amp.Nfc | grep "not found"` and `ldd .../libcoreclr.so`. Typical Debian packages: `libicu*`, `libssl3`, `zlib1g`. If ICU is absent, set `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1` in the env file.
+- A transport controller visible as a Linux input device (optional; controls stay off without it). See the Transport controls part of section 3.
 - Network reachability of Navidrome and a Navidrome account for this device. Credentials go only in `/etc/lucifer/lucifer.env`.
 
 ## 3. First install (UNVERIFIED-ON-DEVICE)
@@ -59,6 +60,18 @@ The catalogue example contains two migration examples whose server availability 
 - Unit facts: runs as user `lucifer` with groups `dialout` (serial reader) and `audio` (DAC); `EnvironmentFile=/etc/lucifer/lucifer.env`; `RuntimeDirectory=lucifer` (`/run/lucifer`, preserved after stop, created at boot by tmpfiles); `Restart=on-failure` (the app exits 1 on fatal mpv/reader failure and 0 on a requested stop); `KillMode=control-group` (kills mpv and any of its children); `TimeoutStopSec=30`, which must stay above `LUCIFER_SHUTDOWN_TIMEOUT_SECONDS` (default 10, max 300). If you raise the app deadline, raise `TimeoutStopSec` above it.
 - Shared IPC directory: `LUCIFER_IPC_DIR=/run/lucifer` in the env file is used by the service and by `lucifer-maint`, so the reader lock stops a maintenance run from competing with the service. Do not set a different value for one of them.
 - Five failed starts within 120 s stop automatic restarts (`StartLimit*`); clear with `sudo systemctl reset-failed lucifer` after fixing the cause.
+
+### Transport controls (UNVERIFIED-ON-DEVICE)
+
+Controls are off until `LUCIFER_INPUT_DEVICE` and `LUCIFER_INPUT_MAP` are both set. The unit adds the `input` group so the service can read `/dev/input/*`; confirm with `id lucifer` and `ls -l /dev/input/by-id/`.
+
+1. Find the device (prefer a stable `/dev/input/by-id/...` path) and its key codes while pressing each button:
+   `sudo -u lucifer /opt/lucifer/current/bin/Amp.Nfc input inspect --device /dev/input/by-id/<name>`
+   It prints `EV_KEY code=<n> value=1 (press)`; it only reads the device and takes no reader lock, so it can run while the service is up.
+2. `sudo install -o lucifer -g lucifer -m 0640 /opt/lucifer/current/config/input-map.example.json /var/lib/lucifer/input-map.json`, then replace every `code` with what step 1 printed. The example codes (164, 163, 165) are placeholders and are not verified for any controller.
+3. Uncomment `LUCIFER_INPUT_DEVICE` and `LUCIFER_INPUT_MAP` in `/etc/lucifer/lucifer.env`; `lucifer-maint check` reports a `controls:` line and rejects an invalid map. Optionally set `LUCIFER_INPUT_REQUIRED=true` so a missing or lost device is fatal and restarts the service. Restart the service.
+
+Transport policy and repeat handling are in the README (Transport controls).
 
 ### Stable serial path (UNVERIFIED-ON-DEVICE)
 
