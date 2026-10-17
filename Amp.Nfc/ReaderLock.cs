@@ -4,7 +4,8 @@ public sealed class ReaderOwnedException(string message) : Exception(message);
 
 /// <summary>
 /// One process owns a reader at a time. The lock is an exclusively opened file named for the
-/// reader inside the IPC directory, so it is released when the owner exits, even after a crash.
+/// reader inside the IPC directory, so it is released when the owner exits, even after a crash. A clean release removes the file;
+/// a crash leaves a harmless unlocked file that the next owner reuses.
 /// </summary>
 public sealed class ReaderLock : IDisposable
 {
@@ -21,7 +22,7 @@ public sealed class ReaderLock : IDisposable
 
         try
         {
-            return new(new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None));
+            return new(new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1, FileOptions.DeleteOnClose));
         }
         catch (IOException)
         {

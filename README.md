@@ -50,6 +50,7 @@ Set `NAVIDROME_URL`, `NAVIDROME_USER`, and `NAVIDROME_PASSWORD` in the process e
 | `LUCIFER_READER_TIMEOUT_SECONDS` | 30 (wait for a tag in `tag read`/`tag write`) |
 | `LUCIFER_MPV_START_TIMEOUT_SECONDS` | 5 |
 | `LUCIFER_HTTP_TIMEOUT_SECONDS` | 15 |
+| `LUCIFER_SHUTDOWN_TIMEOUT_SECONDS` | 10 (1 to 300; deadline for graceful shutdown after SIGTERM or Ctrl+C) |
 
 ### Catalogue
 
@@ -86,6 +87,17 @@ To program or inspect a tag while the player service is installed:
 3. Start the player service.
 
 Service installation is part of later work; until then stop the running `play` process.
+
+### Shutdown and recovery
+
+`play` stops gracefully on SIGTERM (service stop) or Ctrl+C: it cancels pending album work, closes the reader and mpv IPC, stops the mpv process it started, removes its own mpv socket and reader lock, and exits 0. This must finish within `LUCIFER_SHUTDOWN_TIMEOUT_SECONDS`; if it overruns, owned resources are released anyway and the process exits 1.
+
+Supervisor policy (exit 1 so systemd restarts the group; a restart rescans, and a tag still present is selected fresh):
+
+- the mpv process it started exits, or its IPC connection is lost;
+- the reader reports transport faults continuously (at least 20 over at least 10 s), or an explicit idle health probe (PN532 firmware query, every 60 s while no tag is present) fails 3 times in a row.
+
+Not fatal: a long idle period with no tag, transient Navidrome/network/album failures (retried within bounded attempts, then suppressed until the tag is presented again), and failed stream loads. The PN532 binding can return null for some transport failures, so only the health probe can catch those. Policy thresholds are code defaults, not options. Unplug/replug behaviour and systemd recovery are not yet verified on a device (LUC-08, LUC-12).
 
 ### Tests
 

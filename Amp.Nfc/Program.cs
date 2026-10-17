@@ -1,11 +1,7 @@
 using Amp.Nfc;
 
 using var cancellation = new CancellationTokenSource();
-Console.CancelKeyPress += (_, e) =>
-{
-    e.Cancel = true;
-    cancellation.Cancel();
-};
+using var signals = StopSignals.Register(cancellation);
 
 return await Cli.RunAsync(
     args,
