@@ -39,7 +39,7 @@ public static class ControlsConfig
     /// </summary>
     public static ControlsResolution Resolve(LuciferOptions options)
     {
-        const string hint = "There are no default event codes; discover them with `amp-nfc input inspect`.";
+        const string hint = "There are no default event codes; discover them with `Amp.Nfc input inspect`.";
 
         if (options.InputDevice is null && options.InputMapPath is null)
             return new(null, $"disabled: LUCIFER_INPUT_DEVICE and LUCIFER_INPUT_MAP are not set. {hint}", []);
@@ -83,6 +83,7 @@ public sealed class InputControls : IDisposable
     private readonly Dictionary<int, DateTimeOffset> _lastPress = [];
     private readonly Channel<TransportCommand> _commands;
     private readonly CancellationTokenSource _life = new();
+    private CancellationTokenSource? _linked;
     private string? _lostReason;
 
     public InputControls(
@@ -107,7 +108,8 @@ public sealed class InputControls : IDisposable
 
     public void Start(CancellationToken stop)
     {
-        var token = CancellationTokenSource.CreateLinkedTokenSource(stop, _life.Token).Token;
+        _linked = CancellationTokenSource.CreateLinkedTokenSource(stop, _life.Token);
+        var token = _linked.Token;
         Completed = Task.WhenAll(Task.Run(() => ReadAsync(token)), Task.Run(() => ApplyAsync(token)));
     }
 
@@ -176,5 +178,7 @@ public sealed class InputControls : IDisposable
     {
         _life.Cancel();
         _device.Dispose();
+        _linked?.Dispose();
+        _life.Dispose();
     }
 }

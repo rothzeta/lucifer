@@ -27,8 +27,6 @@ public sealed class InputMapping
 
     private InputMapping(Dictionary<int, TransportCommand> keys) => _keys = keys;
 
-    public static InputMapping Empty { get; } = new([]);
-
     public int Count => _keys.Count;
 
     public TransportCommand? Lookup(int code) => _keys.TryGetValue(code, out var command) ? command : null;

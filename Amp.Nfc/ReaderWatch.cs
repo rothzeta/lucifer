@@ -47,15 +47,17 @@ public sealed class ReaderWatch(SupervisorPolicy policy, IReaderHealth health, T
     private int _failedChecks;
     private DateTimeOffset? _nextCheck;
 
-    public string? FatalReason { get; private set; }
+    private string? _fatalReason;
+
+    public string? FatalReason { get { lock (_gate) return _fatalReason; } }
 
     /// <summary>Records one observation; returns the fatal reason once reached, else null.</summary>
     public string? Observe(ReaderObservation observation)
     {
         lock (_gate)
         {
-            if (FatalReason is not null)
-                return FatalReason;
+            if (_fatalReason is not null)
+                return _fatalReason;
 
             var now = clock.GetUtcNow();
             _nextCheck ??= now + policy.HealthInterval;
@@ -66,7 +68,7 @@ public sealed class ReaderWatch(SupervisorPolicy policy, IReaderHealth health, T
                     if (_faults++ == 0)
                         _faultsSince = now;
                     if (_faults >= policy.FaultThreshold && now - _faultsSince >= policy.FaultWindow)
-                        FatalReason =
+                        _fatalReason =
                             $"Reader transport failing: {_faults} consecutive faults over {(now - _faultsSince).TotalSeconds:0.#}s ({observation.Detail}).";
                     break;
 
@@ -82,7 +84,7 @@ public sealed class ReaderWatch(SupervisorPolicy policy, IReaderHealth health, T
                     break;
             }
 
-            return FatalReason;
+            return _fatalReason;
         }
     }
 
@@ -104,7 +106,7 @@ public sealed class ReaderWatch(SupervisorPolicy policy, IReaderHealth health, T
 
         if (++_failedChecks >= policy.HealthFailures)
         {
-            FatalReason = $"Reader health check failed {_failedChecks} times in a row ({result.Detail}).";
+            _fatalReason = $"Reader health check failed {_failedChecks} times in a row ({result.Detail}).";
             return;
         }
         _nextCheck = now + policy.HealthRetryInterval;

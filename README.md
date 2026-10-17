@@ -39,7 +39,7 @@ export PATH="$DOTNET_ROOT:$PATH"
 
 The tests need no reader, mpv, DAC or server. They also run the built application as a process (help, invalid commands, configuration, reader ownership). CI runs build and tests (`.github/workflows/ci.yml`); CI does not prove hardware.
 
-Run from source with `dotnet run --project Amp.Nfc/Amp.Nfc.csproj -- <command>`. The built executable is named `Amp.Nfc`; the help text and some older notes call it `amp-nfc`. They are the same program.
+Run from source with `dotnet run --project Amp.Nfc/Amp.Nfc.csproj -- <command>`. The built executable is named `Amp.Nfc`; the help text and examples use that name.
 
 ## Commands
 
@@ -101,7 +101,7 @@ Set `NAVIDROME_URL`, `NAVIDROME_USER` and `NAVIDROME_PASSWORD` in the process en
 | `LUCIFER_NFC_DEVICE` | `/dev/ttyUSB0` | Serial path of the PN532 adapter. Prefer a stable path (see INSTALL.md). |
 | `LUCIFER_MPV_PATH` | `mpv` | mpv executable (`play`, `check`). |
 | `LUCIFER_AUDIO_DEVICE` | `alsa/default:CARD=Pro` | mpv audio device. The default is a repository default, unverified on any device; list real ones with `mpv --audio-device=help`. |
-| `LUCIFER_IPC_DIR` | `/tmp` | Directory for the mpv socket and the reader lock. Must be identical for the service and maintenance runs (the package uses `/run/lucifer`). |
+| `LUCIFER_IPC_DIR` | `$XDG_RUNTIME_DIR/lucifer`, else `/tmp/lucifer-<user>` | Directory for the mpv socket and the reader lock. The default is created with mode 0700 and refused if it is a symlink, has another mode or is not writable by the user; an explicit value is used as given. Must be identical for the service and maintenance runs (the package uses `/run/lucifer`). |
 | `LUCIFER_CATALOGUE_PATH` | `catalogue.json` | Release UUID to Navidrome album mapping file. |
 | `LUCIFER_READER_TIMEOUT_SECONDS` | `30` | Wait for a tag in `tag read` and `tag write`. |
 | `LUCIFER_MPV_START_TIMEOUT_SECONDS` | `5` | mpv start deadline. |
@@ -112,6 +112,8 @@ Set `NAVIDROME_URL`, `NAVIDROME_USER` and `NAVIDROME_PASSWORD` in the process en
 | `LUCIFER_INPUT_MAP` | none | Key mapping file. Controls are off unless both device and map are set. |
 | `LUCIFER_INPUT_REQUIRED` | `false` | `true` makes a missing or lost input device fatal; then device and map are required. |
 | `LUCIFER_INPUT_DEBOUNCE_MS` | `250` | 0 to 5000. Contact-bounce window per key. |
+
+Fixed deadlines (not configurable): talking to mpv over its IPC socket allows 2 s to connect, 2 s to send a command and 5 s for its reply; a stream that mpv accepted but does not start playing within 20 s fails the album load (status Failed). These are `MpvTimeouts.Default` in `Amp.Nfc/Mpv.cs`. The reader supervisor thresholds are code defaults too (`SupervisorPolicy`).
 
 `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1` is a .NET setting, not a Lucifer one; use it only if the Pi lacks ICU and the app fails to start.
 
@@ -171,9 +173,9 @@ Each control is logged (`Control next: applied` or `ignored`). Interactive mpv h
 
 ## Shutdown and recovery
 
-`play` stops gracefully on SIGTERM (service stop) or Ctrl+C: it cancels pending album work, closes the reader and mpv IPC, stops the mpv process it started, removes its own mpv socket and reader lock, and exits 0. This must finish within `LUCIFER_SHUTDOWN_TIMEOUT_SECONDS`; if it overruns, owned resources are released anyway and the process exits 1.
+`play` stops gracefully on SIGTERM (service stop) or Ctrl+C: it cancels pending album work, closes the reader and mpv IPC, stops the mpv process it started, removes its own mpv socket, releases the reader lock (the lock file itself stays in place; deleting it would reopen a race between owners), and exits 0. This must finish within `LUCIFER_SHUTDOWN_TIMEOUT_SECONDS`; if it overruns, owned resources are released anyway and the process exits 1.
 
-mpv is started with `--no-terminal --msg-level=all=no` and its output is read and discarded, because its `Playing:` lines carry authenticated stream URLs; failure text that echoes a URL is redacted. If mpv exits after a stop was requested, the run still ends normally (exit 0). The packaged unit uses `KillMode=mixed`: SIGTERM goes to the app, which stops its own mpv, and leftovers are killed when `TimeoutStopSec` runs out.
+mpv is started with `--no-config --ytdl=no --no-terminal --msg-level=all=no` (so no system or user mpv config, script or log file applies and no URL is handed to yt-dlp) and its output is read and discarded, because its `Playing:` lines carry authenticated stream URLs; failure text that echoes a URL is redacted. If mpv exits after a stop was requested, the run still ends normally (exit 0). The packaged unit uses `KillMode=mixed`: SIGTERM goes to the app, which stops its own mpv; anything still in the control group is SIGKILLed once the app has exited (or when `TimeoutStopSec` runs out if the app hangs).
 
 Supervisor policy (exit 1 so systemd restarts the group; a restart rescans, and a tag still present is selected fresh):
 

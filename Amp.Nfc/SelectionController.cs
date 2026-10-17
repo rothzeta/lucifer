@@ -19,6 +19,7 @@ public sealed class SelectionController
     private readonly Action<string> _log;
 
     private readonly object _gate = new();
+    private ReleaseId? _appliedRelease;
     private readonly SemaphoreSlim _commit = new(1, 1);
     private readonly HashSet<Task> _running = [];
 
@@ -50,7 +51,7 @@ public sealed class SelectionController
     public string? ObservedUid { get { lock (_gate) return _uid; } }
 
     /// <summary>The album last committed to the player. Removal does not clear it.</summary>
-    public ReleaseId? AppliedRelease { get; private set; }
+    public ReleaseId? AppliedRelease { get { lock (_gate) return _appliedRelease; } }
 
     public Task StepAsync(CancellationToken cancellationToken)
     {
@@ -219,7 +220,7 @@ public sealed class SelectionController
                 await prepared.CommitAsync(cts.Token);
                 lock (_gate)
                 {
-                    AppliedRelease = release;
+                    _appliedRelease = release;
                     if (generation == _generation)
                         _phase = Phase.Applied;
                 }

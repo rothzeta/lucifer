@@ -12,7 +12,7 @@ sealed class PlayerAlbumApplier(
     Mpv mpv,
     TextWriter output) : IAlbumApplier
 {
-    // The owner is stateless, so this one and any LUC-09 owner over the same Mpv share its lock.
+    // The owner is stateless, so this one and the one InputControls uses over the same Mpv share its lock.
     private readonly PlaybackOwner player = new(mpv);
 
     public async Task<IPreparedAlbum> PrepareAsync(ReleaseId release, CancellationToken cancellationToken)
@@ -52,8 +52,8 @@ sealed class PlayerAlbumApplier(
 
         foreach (var track in tracks)
             output.WriteLine(result.OrderedByPosition
-                ? $"  {track.Disc}.{track.Number:00} {track.Title}"
-                : $"  - {track.Title}");
+                ? $"  {track.Disc}.{track.Number:00} {LogText.Clean(track.Title)}"
+                : $"  - {LogText.Clean(track.Title)}");
 
         // Everything is checked before the queue is touched. Messages never include the URLs.
         if (tracks.Select(track => track.Id).Distinct().Count() != tracks.Count)
@@ -61,10 +61,6 @@ sealed class PlayerAlbumApplier(
 
         var auth = navidrome.CreateAuthentication();
         var urls = tracks.Select(track => navidrome.CreateStreamUrl(track.Id, auth)).ToArray();
-
-        if (urls.Any(url => !Uri.TryCreate(url, UriKind.Absolute, out var uri)
-                || uri.Scheme is not ("http" or "https")))
-            throw new SelectionRejectedException("Album has a track with no usable stream address. Current album keeps playing.");
 
         return new Prepared(player, urls, tracks.Count, output);
     }

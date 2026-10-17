@@ -110,6 +110,7 @@ public static class Cli
 
         try
         {
+            IpcDirectoryPolicy.Prepare(options);
             using var owner = ReaderLock.Acquire(options.IpcDirectory, options.NfcDevice);
 
             switch (invocation.Mode)

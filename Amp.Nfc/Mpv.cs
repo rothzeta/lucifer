@@ -143,10 +143,14 @@ public sealed class Mpv : IDisposable
 
     /// <summary>
     /// Playback stops at the end of the album: neither the playlist nor a single file repeats
-    /// (mpv's default, stated so a user's mpv.conf cannot change the product behaviour).
+    /// (mpv's default, also stated explicitly).
     /// </summary>
     internal static IReadOnlyList<string> LaunchArguments(string audioDevice, string socketPath) =>
     [
+        // No /etc/mpv or ~/.config/mpv: a user config could add scripts or a log-file that writes
+        // the authenticated stream URLs to disk. ytdl_hook would hand a URL to yt-dlp on its argv.
+        "--no-config",
+        "--ytdl=no",
         "--idle=yes",
         "--no-video",
         // mpv logs "Playing: <stream URL>" (with the Subsonic credentials) at info level.
@@ -470,19 +474,8 @@ public sealed class Mpv : IDisposable
         }
     }
 
-    public Task PauseAsync(CancellationToken cancellationToken) =>
-        CommandAsync(["set_property", "pause", true], cancellationToken);
-
-    public Task ResumeAsync(CancellationToken cancellationToken) =>
-        CommandAsync(["set_property", "pause", false], cancellationToken);
-
-    public Task NextAsync(CancellationToken cancellationToken) =>
-        CommandAsync(["playlist-next", "force"], cancellationToken);
-
-    public Task PreviousAsync(CancellationToken cancellationToken) =>
-        CommandAsync(["playlist-prev", "force"], cancellationToken);
-
-    private async Task CommandAsync(object[] command, CancellationToken cancellationToken)
+    /// <summary>One raw command under the operation lock. Used by tests to exercise the IPC layer; the transport policy is <see cref="TransportAsync"/>.</summary>
+    internal async Task CommandAsync(object[] command, CancellationToken cancellationToken)
     {
         await _operations.WaitAsync(cancellationToken);
         try { await SendAsync(command, null, cancellationToken); }
@@ -548,8 +541,9 @@ public sealed class Mpv : IDisposable
     {
         try
         {
+            var token = _life.Token; // taken once: Dispose disposes _life while this loop may still be unwinding
             using var reader = new StreamReader(_stream!, Encoding.UTF8, leaveOpen: true);
-            while (await reader.ReadLineAsync(_life.Token) is { } line)
+            while (await reader.ReadLineAsync(token) is { } line)
                 Handle(line);
 
             Lose(new MpvException(MpvFailureKind.ConnectionClosed, "mpv closed its IPC connection."));
@@ -791,6 +785,8 @@ public sealed class Mpv : IDisposable
 
         if (_ownsSocket)
             TryDelete(_socketPath);
+
+        _life.Dispose();
     }
 
     private static void StopChild(Process child)

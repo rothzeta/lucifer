@@ -57,8 +57,10 @@ The catalogue example contains two migration examples whose server availability 
 ### Configuration and the unit
 
 - Env file `/etc/lucifer/lucifer.env`: all settings are listed in the README; the example has no secrets.
-- Unit facts: runs as user `lucifer` with groups `dialout` (serial reader), `audio` (DAC) and `input` (transport controller); `EnvironmentFile=/etc/lucifer/lucifer.env`; `RuntimeDirectory=lucifer` (`/run/lucifer`, preserved after stop, created at boot by tmpfiles); `Restart=on-failure` (the app exits 1 on fatal mpv/reader failure and 0 on a requested stop); `KillMode=mixed` (SIGTERM goes to the app, which stops its own mpv; anything left in the control group is SIGKILLed after `TimeoutStopSec`); `TimeoutStopSec=30`, which exceeds `LUCIFER_SHUTDOWN_TIMEOUT_SECONDS` (default 10; the app rejects values above 25). Keep `TimeoutStopSec` above the app deadline if you change either.
+- Unit facts: runs as user `lucifer` with groups `dialout` (serial reader), `audio` (DAC) and `input` (transport controller); `EnvironmentFile=/etc/lucifer/lucifer.env`; `RuntimeDirectory=lucifer` (`/run/lucifer`, preserved after stop, created at boot by tmpfiles); `Restart=on-failure` (the app exits 1 on fatal mpv/reader failure and 0 on a requested stop); `KillMode=mixed` (SIGTERM goes to the app, which stops its own mpv; anything left in the control group is SIGKILLed once the app has exited, or when `TimeoutStopSec` runs out if the app hangs); `TimeoutStopSec=30`, which exceeds `LUCIFER_SHUTDOWN_TIMEOUT_SECONDS` (default 10; the app rejects values above 25). Keep `TimeoutStopSec` above the app deadline if you change either.
+- Hardening in the unit: `ProtectSystem=strict` (only `/var/lib/lucifer` and `/run/lucifer` are writable), `ProtectHome`, `ProtectKernelTunables/Modules/Logs`, `ProtectControlGroups`, `RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK`. `PrivateTmp` and `PrivateDevices` are not used (maintenance runs share the IPC directory; the reader, input and sound devices are needed). **Unverified on a device**: it passes `systemd-analyze verify` only. If the service fails to start or loses audio, input or the reader after this change, comment out these lines one at a time and report which one was responsible.
 - Shared IPC directory: `LUCIFER_IPC_DIR=/run/lucifer` in the env file is used by the service and by `lucifer-maint`, so the reader lock stops a maintenance run from competing with the service. Do not set a different value for one of them.
+- Env file syntax: plain `KEY=value` lines. `lucifer-maint` refuses (exit 2, value not printed) any line or value that systemd's `EnvironmentFile` would read differently: a backslash, leading or trailing whitespace, or a value starting or ending with a quote. Rewrite the value (for example a password without those characters) so the service and maintenance runs see the same string.
 - Five failed starts within 120 s stop automatic restarts (`StartLimit*`); clear with `sudo systemctl reset-failed lucifer` after fixing the cause.
 
 ### Transport controls (UNVERIFIED-ON-DEVICE)
@@ -120,7 +122,7 @@ If the service is running, the maintenance run is refused with an error naming t
 - Reader missing: `ls -l /dev/lucifer-nfc /dev/ttyUSB*`, `id lucifer` (needs `dialout`), `dmesg | tail`.
 - No sound: `sudo -u lucifer mpv --audio-device=help`, check `LUCIFER_AUDIO_DEVICE`, `id lucifer` (needs `audio`).
 - Restart loop stopped by `StartLimit*`: fix the cause, then `sudo systemctl reset-failed lucifer && sudo systemctl start lucifer`.
-- After a stop, no leftovers: `pgrep -a mpv` is empty and `/run/lucifer` has no socket or lock file.
+- After a stop, no leftovers: `pgrep -a mpv` is empty and `/run/lucifer` has no `amp-mpv.sock`. The `lucifer-reader-*.lock` file stays (it is never deleted) and is harmless while nothing holds it.
 
 ## 8. Update and roll back (UNVERIFIED-ON-DEVICE)
 

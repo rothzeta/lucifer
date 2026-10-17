@@ -611,6 +611,36 @@ public class AlbumPlaybackTests : IDisposable
     }
 
     [Fact]
+    public async Task Server_supplied_titles_are_logged_without_control_characters()
+    {
+        var rig = await BuildAsync();
+        var hostile = Json("{\"subsonic-response\":{\"status\":\"ok\",\"album\":{\"song\":["
+            + "{\"id\":\"t1\",\"title\":\"a\\u001b[31mred\\nforged line\",\"discNumber\":1,\"track\":1}]}}}");
+        var options = LuciferOptions.Load(
+            n => n switch { "NAVIDROME_URL" => "https://music.example.test", "NAVIDROME_USER" => "u", "NAVIDROME_PASSWORD" => "p", _ => null },
+            Mode.Play).Options!;
+        var navidrome = new Navidrome(new HttpClient(new Http((_, _) => Task.FromResult(hostile))), options);
+        var output = new StringWriter();
+        var applier = new PlayerAlbumApplier(Path.Combine(_dir, "catalogue.json"), navidrome, rig.Mpv, output);
+
+        await applier.PrepareAsync(ReleaseId.From(Guid.Parse(ReleaseA)), CancellationToken.None);
+
+        var text = output.ToString();
+        Assert.Contains("a?[31mred?forged line", text);
+        Assert.DoesNotContain('\u001b', text);
+        Assert.Single(text.Split('\n'), line => line.Contains("forged line"));
+    }
+
+    [Fact]
+    public void Mpv_is_started_without_user_config_or_ytdl()
+    {
+        var args = Mpv.LaunchArguments("alsa/x", "/run/s.sock");
+
+        Assert.Contains("--no-config", args);
+        Assert.Contains("--ytdl=no", args);
+    }
+
+    [Fact]
     public void Mpv_is_started_without_a_terminal_and_with_log_messages_off()
     {
         var args = Mpv.LaunchArguments("alsa/x", "/run/s.sock");

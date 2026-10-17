@@ -56,7 +56,7 @@ public class ReaderLockTests : IDisposable
     }
 
     [Fact]
-    public void Releasing_the_lock_removes_its_own_file_only()
+    public void Releasing_the_lock_keeps_the_file_and_lets_the_next_owner_in()
     {
         Directory.CreateDirectory(_dir);
         var other = Path.Combine(_dir, "amp-mpv.sock");
@@ -64,8 +64,10 @@ public class ReaderLockTests : IDisposable
 
         ReaderLock.Acquire(_dir, "/dev/ttyUSB0").Dispose();
 
-        Assert.Empty(Directory.GetFiles(_dir, "lucifer-reader-*"));
+        var lockFile = Assert.Single(Directory.GetFiles(_dir, "lucifer-reader-*"));
         Assert.True(File.Exists(other));
+        using var next = ReaderLock.Acquire(_dir, "/dev/ttyUSB0");
+        Assert.Single(Directory.GetFiles(_dir, "lucifer-reader-*"), lockFile);
     }
 
     [Fact]

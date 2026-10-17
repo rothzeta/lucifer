@@ -39,9 +39,7 @@ static class TagCommands
             var firmware = pn532.FirmwareVersion
                 ?? throw new InvalidOperationException("PN532 did not answer.");
 
-            output.WriteLine(
-                $"PN532 detected. Version={firmware.Version}, " +
-                $"Supported={firmware.VersionSupported}");
+            output.WriteLine($"PN532 detected. Version={firmware.Version}, Supported={firmware.VersionSupported}");
 
             return pn532;
         }
@@ -61,11 +59,7 @@ static class TagCommands
         output.WriteLine($"Pages:    {tag.NumberBlocks}");
     }
 
-    static UltralightCard WaitForTag(
-        Pn532 pn532,
-        TimeSpan timeout,
-        TextWriter output,
-        CancellationToken cancellationToken)
+    static UltralightCard WaitForTag(Pn532 pn532, TimeSpan timeout, TextWriter output, CancellationToken cancellationToken)
     {
         output.WriteLine("Place an NTAG215 on the reader...");
 
@@ -76,12 +70,9 @@ static class TagCommands
             cancellationToken.ThrowIfCancellationRequested();
 
             if (DateTime.UtcNow >= deadline)
-                throw new TimeoutException(
-                    $"No tag was presented within {timeout.TotalSeconds:0} seconds.");
+                throw new TimeoutException($"No tag was presented within {timeout.TotalSeconds:0} seconds.");
 
-            var raw = pn532.ListPassiveTarget(
-                MaxTarget.One,
-                TargetBaudRate.B106kbpsTypeA);
+            var raw = pn532.ListPassiveTarget(MaxTarget.One, TargetBaudRate.B106kbpsTypeA);
 
             if (raw is null)
             {
@@ -90,8 +81,7 @@ static class TagCommands
             }
 
             // Byte 0 is the number of detected targets.
-            var decoded = pn532.TryDecode106kbpsTypeA(
-                raw.AsSpan(1));
+            var decoded = pn532.TryDecode106kbpsTypeA(raw.AsSpan(1));
 
             if (decoded is null)
             {
@@ -100,17 +90,11 @@ static class TagCommands
             }
 
             output.WriteLine(
-                $"Detected ISO14443A: " +
-                $"ATQA=0x{decoded.Atqa:X4}, " +
-                $"SAK=0x{decoded.Sak:X2}, " +
-                $"UID={Convert.ToHexString(decoded.NfcId)}");
+                $"Detected ISO14443A: ATQA=0x{decoded.Atqa:X4}, SAK=0x{decoded.Sak:X2}, UID={Convert.ToHexString(decoded.NfcId)}");
 
-            if (!UltralightCard.IsUltralightCard(
-                    decoded.Atqa,
-                    decoded.Sak))
+            if (!UltralightCard.IsUltralightCard(decoded.Atqa, decoded.Sak))
             {
-                output.WriteLine(
-                    "Tag is not an Ultralight/NTAG-compatible card.");
+                output.WriteLine("Tag is not an Ultralight/NTAG-compatible card.");
                 Thread.Sleep(500);
                 continue;
             }
@@ -165,7 +149,7 @@ static class TagCommands
                 var text = new TextRecord(record);
 
                 output.WriteLine(
-                    $"TEXT [{text.LanguageCode}]: {text.Text}");
+                    $"TEXT [{LogText.Clean(text.LanguageCode)}]: {LogText.Clean(text.Text)}");
             }
             else
             {

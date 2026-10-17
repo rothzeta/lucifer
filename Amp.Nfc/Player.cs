@@ -11,7 +11,7 @@ static class Player
         TextWriter error,
         CancellationToken cancellationToken)
     {
-        using var http = new HttpClient { Timeout = options.HttpTimeout };
+        using var http = new HttpClient();
         var navidrome = new Navidrome(http, options);
 
         using var pn532 = new Pn532(options.NfcDevice);

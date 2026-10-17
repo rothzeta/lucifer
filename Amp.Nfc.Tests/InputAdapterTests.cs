@@ -163,9 +163,6 @@ public class InputAdapterTests : IDisposable
         Assert.Null(map.Lookup(305));
     }
 
-    [Fact]
-    public void There_is_no_built_in_mapping() => Assert.Null(InputMapping.Empty.Lookup(164));
-
     [Theory]
     [InlineData("not json", "keys")]
     [InlineData("[]", "keys")]
