@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
@@ -6,7 +5,7 @@ using System.Text.Json;
 namespace Amp.Nfc;
 
 // IPC transport: command send, read loop, reply matching and connection loss.
-public sealed partial class Mpv : IDisposable
+public sealed partial class Mpv
 {
     /// <summary>One raw command under the operation lock. Used by tests to exercise the IPC layer; the transport policy is <see cref="TransportAsync"/>.</summary>
     internal async Task CommandAsync(object[] command, CancellationToken cancellationToken)

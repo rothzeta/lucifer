@@ -1,12 +1,9 @@
-using System.Diagnostics;
-using System.Net.Sockets;
-using System.Text;
 using System.Text.Json;
 
 namespace Amp.Nfc;
 
 // Status derived from mpv events, and the stream-start deadline.
-public sealed partial class Mpv : IDisposable
+public sealed partial class Mpv
 {
     // ---- observations ------------------------------------------------------
 
