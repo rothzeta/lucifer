@@ -14,6 +14,13 @@ record Authentication(
     string Salt,
     string Token);
 
+/// <summary>The server says the album ID does not exist: the catalogue mapping is stale.</summary>
+sealed class StaleMappingException(string albumId)
+    : Exception($"Navidrome has no album with ID {albumId}")
+{
+    public string AlbumId { get; } = albumId;
+}
+
 sealed class Navidrome(HttpClient http, LuciferOptions options)
 {
     public async Task<List<Track>> GetTracksAsync(
@@ -43,9 +50,18 @@ sealed class Navidrome(HttpClient http, LuciferOptions options)
                 stream,
                 cancellationToken: cancellationToken);
 
-        var album = json.RootElement
-            .GetProperty("subsonic-response")
-            .GetProperty("album");
+        var reply = json.RootElement.GetProperty("subsonic-response");
+
+        if (reply.TryGetProperty("status", out var status) && status.GetString() == "failed")
+        {
+            var error = reply.TryGetProperty("error", out var e) ? e : default;
+            var code = error.ValueKind == JsonValueKind.Object && error.TryGetProperty("code", out var c) ? c.GetInt32() : 0;
+            if (code == 70)
+                throw new StaleMappingException(albumId);
+            throw new InvalidOperationException($"Navidrome refused the request (error {code})");
+        }
+
+        var album = reply.GetProperty("album");
 
         return album
             .GetProperty("song")

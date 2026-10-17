@@ -5,22 +5,8 @@ using Iot.Device.Pn532.ListPassive;
 
 namespace Amp.Nfc;
 
-record Album(
-    string NavidromeId,
-    string Artist,
-    string Title);
-
 static class Player
 {
-    static readonly Dictionary<string, Album> Albums = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["a24495e4-eb70-48cd-b0fa-31a606459d26"] =
-            new("0lkVdYFhXO6ubrfysEPzTd", "Mastodon", "Crack the Skye (15th anniversary deluxe edition)"),
-
-        ["d5e2d971-e856-4342-ad09-0e6ad1b5241a"] =
-            new("0ckDdmbp5fa3ESbkUwskAF", "BAND-MAID", "Brand New MAID")
-    };
-
     public static async Task RunAsync(
         LuciferOptions options,
         TextWriter output,
@@ -89,15 +75,26 @@ static class Player
 
                 var mbid = identity.Release.ToString();
 
-                if (!Albums.TryGetValue(mbid, out var album))
+                var lookup = CatalogueFile.Resolve(options.CataloguePath, identity.Release);
+
+                if (lookup.Album is not { } album)
                 {
-                    output.WriteLine($"Album is not available in this AMP library: {mbid}");
+                    output.WriteLine($"{lookup.Message} Current album keeps playing.");
                     continue;
                 }
 
-                output.WriteLine($"{album.Artist} — {album.Title}");
+                output.WriteLine(lookup.Message);
 
-                var tracks = await navidrome.GetTracksAsync(album.NavidromeId, cancellationToken);
+                List<Track> tracks;
+                try
+                {
+                    tracks = await navidrome.GetTracksAsync(album.NavidromeId, cancellationToken);
+                }
+                catch (StaleMappingException)
+                {
+                    output.WriteLine($"Stale mapping: Navidrome has no album {album.NavidromeId} for release {mbid}; fix it in {options.CataloguePath}. Current album keeps playing.");
+                    continue;
+                }
 
                 if (tracks.Count == 0)
                 {

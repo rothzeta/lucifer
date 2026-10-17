@@ -8,6 +8,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Amp.Nfc.Tests" />
+    <Content Include="..\catalogue.example.json" Link="catalogue.example.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Iot.Device.Bindings" Version="4.2.0" />
   </ItemGroup>
 

@@ -14,7 +14,7 @@ public static class CommandLine
           amp-nfc play                          Run the player: tap a tag to play its album.
           amp-nfc tag read                      Read the NDEF text on the tag placed on the reader.
           amp-nfc tag write --release <uuid>    Write a MusicBrainz release identity to a tag.
-          amp-nfc check                         Validate configuration; no reader or server access.
+          amp-nfc check                         Validate configuration and catalogue; no reader or server access.
           amp-nfc help                          Show this help.
 
         The reader has one owner. Stop the player service before using `tag`, then start it again.
@@ -25,7 +25,7 @@ public static class CommandLine
           LUCIFER_MPV_PATH               default mpv
           LUCIFER_AUDIO_DEVICE           default alsa/default:CARD=Pro
           LUCIFER_IPC_DIR                default /tmp (mpv socket and reader lock)
-          LUCIFER_CATALOGUE_PATH         default catalogue.json (reserved; catalogue is still compiled in)
+          LUCIFER_CATALOGUE_PATH         default catalogue.json (release UUID -> Navidrome album ID; see README)
           LUCIFER_READER_TIMEOUT_SECONDS     default 30 (wait for a tag in tag read/write)
           LUCIFER_MPV_START_TIMEOUT_SECONDS  default 5
           LUCIFER_HTTP_TIMEOUT_SECONDS       default 15

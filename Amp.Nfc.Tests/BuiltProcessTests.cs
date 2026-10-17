@@ -93,14 +93,41 @@ public class BuiltProcessTests : IDisposable
         Assert.DoesNotContain("topsecretpw", all);
     }
 
+    private static readonly (string, string)[] ValidServer =
+        [("NAVIDROME_URL", "https://music.example.test"), ("NAVIDROME_USER", "u"), ("NAVIDROME_PASSWORD", "pw-value")];
+
     [Fact]
     public void Check_passes_with_valid_configuration_without_hardware()
     {
-        var r = Run(["check"],
-            ("NAVIDROME_URL", "https://music.example.test"), ("NAVIDROME_USER", "u"), ("NAVIDROME_PASSWORD", "pw-value"));
+        // The catalogue is now an external required file; the shipped example stands in for it.
+        var catalogue = Path.Combine(AppContext.BaseDirectory, "catalogue.example.json");
+        var r = Run(["check"], ValidServer.Append(("LUCIFER_CATALOGUE_PATH", catalogue)).ToArray());
 
         Assert.Equal(0, r.ExitCode);
+        Assert.Contains("2 albums", r.Out);
         Assert.DoesNotContain("pw-value", r.Out + r.Err);
+    }
+
+    [Fact]
+    public void Check_validates_the_catalogue_and_names_the_failing_field()
+    {
+        var path = Path.Combine(_ipc, "bad-catalogue.json");
+        Directory.CreateDirectory(_ipc);
+        File.WriteAllText(path, "{ \"source\": \"navidrome\", \"albums\": { \"" + Release + "\": { \"navidromeId\": \" \", \"artist\": \"a\", \"title\": \"t\" } } }");
+
+        var r = Run(["check"], ValidServer.Append(("LUCIFER_CATALOGUE_PATH", path)).ToArray());
+
+        Assert.NotEqual(0, r.ExitCode);
+        Assert.Contains($"albums.{Release}.navidromeId", r.Out + r.Err);
+    }
+
+    [Fact]
+    public void Check_reports_a_missing_catalogue_file()
+    {
+        var r = Run(["check"], ValidServer.Append(("LUCIFER_CATALOGUE_PATH", Path.Combine(_ipc, "absent.json"))).ToArray());
+
+        Assert.NotEqual(0, r.ExitCode);
+        Assert.Contains("absent.json", r.Out + r.Err);
     }
 
     [Fact]
@@ -133,8 +160,11 @@ public class BuiltProcessTests : IDisposable
     {
         using var owner = ReaderLock.Acquire(_ipc, "/dev/lucifer-test-no-such-reader");
 
+        // A valid catalogue is now a precondition of play, so the failure must still come from reader ownership.
+        var catalogue = Path.Combine(AppContext.BaseDirectory, "catalogue.example.json");
         var r = Run(["play"],
-            ("NAVIDROME_URL", "https://music.example.test"), ("NAVIDROME_USER", "u"), ("NAVIDROME_PASSWORD", "pw"));
+            ("NAVIDROME_URL", "https://music.example.test"), ("NAVIDROME_USER", "u"), ("NAVIDROME_PASSWORD", "pw"),
+            ("LUCIFER_CATALOGUE_PATH", catalogue));
 
         Assert.NotEqual(0, r.ExitCode);
         Assert.Contains("already", r.Err, StringComparison.OrdinalIgnoreCase);

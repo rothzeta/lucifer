@@ -43,6 +43,19 @@ public static class Cli
             return invocation.Mode == Mode.Check ? Failed : Usage;
         }
 
+        CatalogueResult? catalogue = null;
+        if (invocation.Mode is Mode.Check or Mode.Play)
+        {
+            catalogue = Catalogue.Load(options.CataloguePath);
+            if (catalogue.Catalogue is null)
+            {
+                error.WriteLine($"Catalogue errors ({options.CataloguePath}):");
+                foreach (var e in catalogue.Errors)
+                    error.WriteLine($"  {e.Field}: {e.Message}");
+                return Failed;
+            }
+        }
+
         if (invocation.Mode == Mode.Check)
         {
             output.WriteLine("Configuration is valid.");
@@ -50,7 +63,8 @@ public static class Cli
             output.WriteLine($"  ipc dir:   {options.IpcDirectory}");
             output.WriteLine($"  mpv:       {options.MpvPath} ({options.AudioDevice})");
             output.WriteLine($"  server:    {options.NavidromeUrl} (credentials set)");
-            output.WriteLine("No reader or server was contacted.");
+            output.WriteLine($"  catalogue: {options.CataloguePath} ({catalogue!.Catalogue!.Count} albums)");
+            output.WriteLine("No reader or server was contacted; album IDs are not verified against the server.");
             return Ok;
         }
 
