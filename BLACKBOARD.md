@@ -1,11 +1,11 @@
 ---
 id: lucifer
 type: project
-status: ready
+status: active
 priority: P1
 updated: "2026-10-17"
 focus: "Complete a reliable NFC album player on the existing Pi"
-next: [LUC-01, LUC-05, LUC-08]
+next: [LUC-08, LUC-09, LUC-11, LUC-12]
 blocked_by: []
 related: [lucifer-tags, lucifer-playback, lucifer-device]
 ---
@@ -115,9 +115,9 @@ Use the existing estimate of 5–8 focused implementation sessions plus device c
 | Programmed identity | NDEF text with a release UUID |
 | Album registration | Two compiled mappings |
 | Writer delivery | Source present; runnable command pending |
-| Controls | mpv adapter methods exist; application input pending |
-| Build and tests | Initial review ran no build. Planning workspace has .NET SDK 10.0.110; build and application tests remain unrun. mpv and target devices are unavailable here. |
-| Device release | No target acceptance evidence recorded |
+| Controls | Transport policy and evdev adapter implemented; no default key codes; real controller events and mapping pending on the device |
+| Build and tests | Delivered revision 7dd4cf8 (source = reviewed 4bcca29): 0 build errors, 390 tests pass (fakes and stubs). Earlier note: initial review ran no build. Planning workspace has .NET SDK 10.0.110; build and application tests remain unrun. mpv and target devices are unavailable here. |
+| Device release | No target acceptance evidence recorded. LUC-08 blocked on Pi access; software candidate delivered on ruach/lucifer-v1-orchestrator; linux-arm64 and linux-arm packages build here |
 | Completion estimate | Planning judgement: about 5–8 focused implementation sessions plus device checks, if LUC-08 confirms the physical chain works |
 
 ## Definition of done
@@ -145,6 +145,7 @@ The writing uses short procedural statements inspired by the previously selected
 
 ## Recent changes
 
+- 17 October 2026: Orchestrator delivered the v1 software candidate (LUC-01 to LUC-07, LUC-10, packaging parts of LUC-11, controls software of LUC-09) onto ruach/lucifer-v1-orchestrator at 7dd4cf8 after independent review; device evidence and LUC-08/09/11/12 completion remain open. See docs/coordination/v1/task-record.md.
 - 17 October 2026: Recovered the physical album concept and current software direction.
 - 17 October 2026: Reviewed the first repository commit and the relevant official protocols.
 - 17 October 2026: Created three workstream boards, twelve tasks, and a release acceptance record. Application code is unchanged by this documentation work.

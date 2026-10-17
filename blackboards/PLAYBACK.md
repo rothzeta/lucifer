@@ -16,8 +16,8 @@ related: [lucifer-tags, lucifer-device]
 
 ## LUC-05 Handle mpv replies and events correctly
 
-**Status:** ready  
-**Owner:** unassigned  
+**Status:** done  
+**Owner:** Ruach v1 orchestrator (Implementer workers)  
 **Depends on:** none
 
 Keep one persistent mpv process. Extract its ownership and protocol handling from the main file.
@@ -34,12 +34,12 @@ Own the child immediately after starting it. Verify readiness by connecting and 
 
 **Done when:** event-before-reply, wrong reply ID, missing reply, malformed reply, startup cancellation, and child exit are handled within declared deadlines. Actual load failure is distinguishable from accepted command. Record adapter/process evidence for A12, A13, A16, and A21. Supervised recovery in A20 belongs to LUC-10 and the final device gate.
 
-**Evidence:** pending.
+**Evidence:** Component evidence at delivered revision 7dd4cf8 (source tree = reviewed 4bcca29; REVIEW-2 no blocking findings; 390 tests, fakes/stubs only, no hardware). Reports: docs/coordination/v1/LUC-05/impl-1-report.md. Device portions pending. Fake mpv peer for A12, A13, A16, A21; real mpv semantics unverified.
 
 ## LUC-06 Make Navidrome outcomes explicit
 
-**Status:** todo  
-**Owner:** unassigned  
+**Status:** done  
+**Owner:** Ruach v1 orchestrator (Implementer workers)  
 **Depends on:** LUC-03
 
 Keep Navidrome behind a narrow source boundary: resolve the configured local album and return an ordered set of playable tracks. Keep the API and provider IDs out of the NFC parser.
@@ -54,12 +54,12 @@ Verify stream access through the real server in LUC-08 and A22. This task does n
 
 **Done when:** representative album responses produce complete deterministic track sets and HTTP-success application errors produce meaningful outcomes. Record HTTP/source boundary evidence for A07 and A14. LUC-07 verifies unchanged playback when preparation fails in A15.
 
-**Evidence:** pending.
+**Evidence:** Component evidence at delivered revision 7dd4cf8 (source tree = reviewed 4bcca29; REVIEW-2 no blocking findings; 390 tests, fakes/stubs only, no hardware). Reports: docs/coordination/v1/LUC-06/impl-1-report.md. Device portions pending. Hand-written HTTP fixtures for A07, A14; real Navidrome unverified.
 
 ## LUC-07 Apply each complete album as one operation
 
-**Status:** todo  
-**Owner:** unassigned  
+**Status:** done  
+**Owner:** Ruach v1 orchestrator (Implementer workers)  
 **Depends on:** LUC-04, LUC-05, LUC-06
 
 Connect the controller, catalogue, source, and audio player. Prepare and validate all tracks before replacing current playback. Check the selection generation immediately before applying the queue. Discard stale preparation.
@@ -74,7 +74,7 @@ Keep scanning and accepting controls during slow preparation. A newer valid albu
 
 **Done when:** A-to-B replacement, failed preparation, partial queue failure, and slow A followed by B have the documented outcome. The player reports loading, playing, paused, ended, and failed states from observable evidence. Record integrated boundary evidence for A10 and A15–A17. Full-album audio in A22 is closed at LUC-12.
 
-**Evidence:** pending.
+**Evidence:** Component evidence at delivered revision 7dd4cf8 (source tree = reviewed 4bcca29; REVIEW-2 no blocking findings; 390 tests, fakes/stubs only, no hardware). Reports: docs/coordination/v1/LUC-07/impl-1-report.md. Device portions pending. A10, A15-A17 via fake peers; mpv playlist semantics and audible output (A22) unverified.
 
 ## Source guidance
 

@@ -16,7 +16,7 @@ related: [lucifer-tags, lucifer-playback]
 
 ## LUC-08 Record the physical baseline
 
-**Status:** ready  
+**Status:** blocked  
 **Owner:** unassigned  
 **Depends on:** none
 
@@ -28,12 +28,12 @@ Test the actual ring or tag in its intended position relative to the antenna. Us
 
 **Done when:** the physical inventory and one source-to-audio result are recorded in the acceptance record. Failed hardware checks become named blockers with a next diagnostic action. Re-estimate the remaining effort from this result.
 
-**Evidence:** pending. This review had no connection to the Pi.
+**Evidence:** pending. Blocked: no Pi access from the orchestrator host (no /dev/ttyUSB0, no mpv, no ALSA hardware; the Pi hostname is not recorded and must not be inferred). Needs the owner to provide Pi access or run the inventory. Also needed there: `journalctl` check that mpv prints no stream URL, controller events via `Amp.Nfc input inspect`.
 
 ## LUC-09 Connect the selected transport controls
 
-**Status:** todo  
-**Owner:** unassigned  
+**Status:** active  
+**Owner:** Ruach v1 orchestrator (Implementer workers)  
 **Depends on:** LUC-05, LUC-07, LUC-08
 
 Inspect the selected controller's actual Linux input events, using KB1K if it is available. Implement only the selected input path. Ensure the service account can access it.
@@ -48,12 +48,12 @@ Handle button repeats deliberately. Route controls through the same owner as alb
 
 **Done when:** normal, repeated, boundary, paused, loading, and ended control cases pass through the selected input adapter and controller. Record component evidence for A18. Its installed service-mode result is closed at LUC-12.
 
-**Evidence:** pending.
+**Evidence:** Component evidence at delivered revision 7dd4cf8 (source tree = reviewed 4bcca29; REVIEW-2 no blocking findings; 390 tests, fakes/stubs only, no hardware). Reports: docs/coordination/v1/LUC-09/impl-1-report.md. Device portions pending. Transport policy and evdev adapter implemented with NO default key codes; the selected controller's actual events (LUC-08) are unknown. Remaining: inspect real events with `input inspect`, write the mapping, confirm A18 on the Pi.
 
 ## LUC-10 Own shutdown and recovery
 
-**Status:** todo  
-**Owner:** unassigned  
+**Status:** done  
+**Owner:** Ruach v1 orchestrator (Implementer workers)  
 **Depends on:** LUC-01, LUC-05, LUC-08
 
 Handle service termination as well as Ctrl+C. A small Generic Host lifetime or explicit POSIX signal registration is sufficient.
@@ -68,12 +68,12 @@ After a supervised restart, scan again. A present tag is a fresh selection and r
 
 **Done when:** the application handles stop during startup, HTTP preparation, and IPC wait without an owned orphan process; fatal adapter failure exits according to the policy. Record application/process evidence for A19–A21. Recovery through the installed systemd unit is closed at LUC-12.
 
-**Evidence:** pending.
+**Evidence:** Component evidence at delivered revision 7dd4cf8 (source tree = reviewed 4bcca29; REVIEW-2 no blocking findings; 390 tests, fakes/stubs only, no hardware). Reports: docs/coordination/v1/LUC-10/impl-1-report.md. Device portions pending. A19-A21 application/process parts with substitutes; unplug/replug and systemd recovery pending on the device.
 
 ## LUC-11 Publish and install a reproducible device
 
-**Status:** todo  
-**Owner:** unassigned  
+**Status:** active  
+**Owner:** Ruach v1 orchestrator (Implementer workers)  
 **Depends on:** LUC-02, LUC-03, LUC-07, LUC-09, LUC-10
 
 Keep .NET 10. Select the publish runtime from the installed OS: `linux-arm64` for 64-bit userland or `linux-arm` for 32-bit userland. Ordinary self-contained publishing is the baseline. Check native OS dependencies and the actual package on the Pi. Native AOT is not a prerequisite.
@@ -86,11 +86,11 @@ Add a basic CI build and the meaningful black-box tests. CI checks behaviour thr
 
 **Done when:** an installation from the documented package works without a development checkout, starts after reboot, accepts the physical controls, and follows the documented update/recovery procedure. Record A02 and A23.
 
-**Evidence:** pending.
+**Evidence:** Component evidence at delivered revision 7dd4cf8 (source tree = reviewed 4bcca29; REVIEW-2 no blocking findings; 390 tests, fakes/stubs only, no hardware). Reports: docs/coordination/v1/LUC-11/impl-1-report.md; INT-4, INT-5, FIX-1. Device portions pending. Packaging for linux-arm64 and linux-arm (architecture not chosen), systemd unit, CI definition, install docs built/verified here. Remaining: install on the Pi without a checkout, reboot, update/rollback (A02, A23).
 
 ## LUC-12 Close the release gate
 
-**Status:** todo  
+**Status:** blocked  
 **Owner:** unassigned  
 **Depends on:** LUC-11
 
@@ -102,4 +102,4 @@ Run a complete album, repeated object placements, a reboot, service stop/restart
 
 **Done when:** every mandatory acceptance case passes; release evidence identifies the commit, package, device, versions, operator, and date; all remaining work is explicitly outside v1.
 
-**Evidence:** pending.
+**Evidence:** pending. Blocked on LUC-08/LUC-11 device installation and on real-server fixtures (multi-disc, continuous pair).

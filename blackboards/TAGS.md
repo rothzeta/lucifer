@@ -16,8 +16,8 @@ related: [lucifer-playback, lucifer-device]
 
 ## LUC-01 Make one runnable command surface
 
-**Status:** ready  
-**Owner:** unassigned  
+**Status:** done  
+**Owner:** Ruach v1 orchestrator (Implementer workers)  
 **Depends on:** none
 
 Bring the root writer into the existing application. Keep one executable. Extract the tag, catalogue, provider, player, and controller responsibilities into cohesive files as they become necessary. Keep the current project path unless a rename has a concrete benefit.
@@ -30,12 +30,12 @@ Use an explicit maintenance workflow: stop the player service, run the writer, t
 
 **Done when:** the application builds; all modes appear in help; invalid commands fail before hardware access; writer mode can run independently of Navidrome; one reader owner is enforced. Record A01 and A02.
 
-**Evidence:** pending.
+**Evidence:** Component evidence at delivered revision 7dd4cf8 (source tree = reviewed 4bcca29; REVIEW-2 no blocking findings; 390 tests, fakes/stubs only, no hardware). Reports: docs/coordination/v1/LUC-01/impl-1-report.md. Device portions pending. A01/A02 automated parts; A02 second-owner-on-target pending.
 
 ## LUC-02 Share the tag contract and verify writes
 
-**Status:** todo  
-**Owner:** unassigned  
+**Status:** done  
+**Owner:** Ruach v1 orchestrator (Implementer workers)  
 **Depends on:** LUC-01
 
 Use a typed release identity backed by `Guid`. The writer emits the existing canonical format:
@@ -52,12 +52,12 @@ Scope initial support to the actual tested NTAG-compatible tag or ring. The phys
 
 **Done when:** the shared codec recognises the exact intended release after writing and reading back. Malformed input changes no tag data. Read-back mismatch is a failure. Record codec and writer boundary evidence for A03–A05. The physical write-to-play result is closed at LUC-12.
 
-**Evidence:** pending.
+**Evidence:** Component evidence at delivered revision 7dd4cf8 (source tree = reviewed 4bcca29; REVIEW-2 no blocking findings; 390 tests, fakes/stubs only, no hardware). Reports: docs/coordination/v1/LUC-02/impl-1-report.md. Device portions pending. Codec/writer boundary evidence for A04, A05; A03 physical write-to-play at LUC-12.
 
 ## LUC-03 Add albums without editing source
 
-**Status:** todo  
-**Owner:** unassigned  
+**Status:** done  
+**Owner:** Ruach v1 orchestrator (Implementer workers)  
 **Depends on:** LUC-02
 
 Move the two existing mappings to an external catalogue. Use the canonical release UUID as the key and a Navidrome album ID as the source locator. Artist and title are display metadata.
@@ -70,12 +70,12 @@ For v1, a configuration file is sufficient. Optional later import can page throu
 
 **Done when:** a third exact mapping can be added and resolved without modifying or rebuilding C#. Changing a local provider ID requires changing only the mapping. Record catalogue evidence for A06 and A07. The third-album audio test is closed at LUC-12.
 
-**Evidence:** pending.
+**Evidence:** Component evidence at delivered revision 7dd4cf8 (source tree = reviewed 4bcca29; REVIEW-2 no blocking findings; 390 tests, fakes/stubs only, no hardware). Reports: docs/coordination/v1/LUC-03/impl-1-report.md. Device portions pending. A06 automated part, A07 mapping outcomes; real stale-ID/server semantics (Subsonic error 70) unverified.
 
 ## LUC-04 Separate presence from selection success
 
-**Status:** todo  
-**Owner:** unassigned  
+**Status:** done  
+**Owner:** Ruach v1 orchestrator (Implementer workers)  
 **Depends on:** LUC-02
 
 Replace the single `currentUid` latch with a small controller that distinguishes:
@@ -94,4 +94,4 @@ Inspect the UID before constructing and reading the full card where the binding 
 
 **Done when:** held tags do not restart; one missed observation does not rearm; a transient initial failure recovers while the object remains; stale preparation cannot replace a newer selection. Record scripted reader/controller evidence for A08–A11 and A17. Physical and control integration is closed at LUC-12.
 
-**Evidence:** pending.
+**Evidence:** Component evidence at delivered revision 7dd4cf8 (source tree = reviewed 4bcca29; REVIEW-2 no blocking findings; 390 tests, fakes/stubs only, no hardware). Reports: docs/coordination/v1/LUC-04/impl-1-report.md. Device portions pending. Scripted reader evidence for A08-A11, A17; radio coupling unverified.
