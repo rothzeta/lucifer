@@ -12,6 +12,8 @@ The writer at the repository root is not included in the application project. A 
 
 Start with the [v1 blackboard](BLACKBOARD.md). The [source review](docs/reviews/2026-10-17-v1-review.md) explains the findings. The [acceptance record](blackboards/ACCEPTANCE.md) defines release evidence.
 
+The [execution plan to v1](BLACKBOARD.md#execution-plan-to-v1) sequences the twelve tasks into target validation, album programming, reliable playback, controls and recovery, installation, and release acceptance. Start with the Pi baseline and LUC-01.
+
 ## Run the existing prototype
 
 The current project targets .NET 10 and references Iot.Device.Bindings 4.2.0. It requires mpv, the configured serial reader, an accessible Navidrome server, and the selected ALSA audio output.

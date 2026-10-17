@@ -75,6 +75,38 @@ The required result is one device, one selected album, one provider, and one aud
 
 Start the three independent tasks together where practical. Coordinate edits to the existing player file; extract an owned component before concurrent changes.
 
+## Execution plan to v1
+
+Deliver the following milestones in order. The child boards retain task status and detailed acceptance requirements. This sequence is a default for one implementer; independent work may proceed whenever its listed prerequisites are complete.
+
+| Milestone | Tasks in implementation order | Deliverable | Exit gate |
+| --- | --- | --- | --- |
+| 0 Confirm the target | LUC-08 | Recorded Pi, reader, tag, DAC, controller, and server inventory; one attempted source-to-audio run | Record the observed result and any hardware blocker in the acceptance record. Select the publish architecture and revise the effort estimate. |
+| 1 Program and register albums | LUC-01 → LUC-02 → LUC-03 | One executable with validated configuration, shared tag codec, verified writing, and an external catalogue | Build and automated portions of A01, A02, A04, and A05 pass; a third mapping resolves without rebuilding. Physical write-to-play evidence follows on the Pi. |
+| 2 Select and play reliably | LUC-05 → LUC-04 → LUC-06 → LUC-07 | Correlated mpv replies, observable playback state, stable tag presence, bounded retries, explicit API outcomes, and complete queue replacement | Relevant automated checks in A07–A17 pass, including held-tag suppression, transient recovery, complete ordering, and delayed A superseded by B. No partial queue is reported as complete playback. |
+| 3 Operate and recover | LUC-10 → LUC-09 | Bounded shutdown, fatal-fault exit policy, and the selected transport input | Component checks cover stop during startup/HTTP/IPC and control behaviour. Exercise the actual reader and controller on the Pi; systemd recovery is confirmed after installation. |
+| 4 Install the candidate | LUC-11 | CI build and tests, publish package, configuration examples, systemd unit, and installation/update/restore instructions | Install without a development checkout. Reboot, controls, service stop/restart, and package replacement work on the Pi. |
+| 5 Release v1 | LUC-12 | One installed candidate with complete acceptance evidence | All A01–A23 pass for the candidate, including the third album, a full album, multi-disc order, continuous tracks, 20 placements, and fault recovery. Record the release commit and package. |
+
+Start the target baseline first because reader compatibility and placement can change the implementation effort. If the Pi is unavailable, proceed with milestones 1 and 2 using reader, HTTP, and IPC substitutes. Record the missing device evidence explicitly; keep the target baseline and physical release gates open. Inspect controller events before implementing its input mapping.
+
+### First implementation change
+
+Take LUC-01 as the first code change. Keep `Amp.Nfc/Amp.Nfc.csproj` as the application project, bring the root writer behind explicit command dispatch, and extract options and reader ownership only as needed for that task. Add one test project for command/configuration behaviour that must work without hardware. Defer codec, catalogue, and playback fixes to their own tasks so this change has a clear review boundary.
+
+Validate with an application build and command checks from the built output. Help, invalid commands, and missing writer arguments must finish without opening the reader; writer mode must not need Navidrome credentials. Confirm conflicting reader ownership through an appropriate boundary check and later on the target. Record the commit and results in LUC-01 before starting LUC-02.
+
+### Risks that can change the plan
+
+| Uncertainty | Resolve it with | Consequence |
+| --- | --- | --- |
+| Actual ring chip, antenna placement, or UART path does not work | LUC-08 inventory and repeatable physical reads | Diagnose the hardware path before promising a device completion date. Software boundary work may continue. |
+| Exact release mapping or track positions are incomplete on the server | LUC-03 registration and LUC-06 response fixtures, then real-server checks | Verify mappings explicitly and use the documented ordering fallback; keep automatic matching outside v1. |
+| Actual controller events differ from the proposed mapping | LUC-08 event inspection | Choose and document the available input path before LUC-09. Keep the existing play/pause, next, and previous release requirements. |
+| Stream startup or continuous playback fails on the installed device | A16 and A22 with the actual server, files, mpv, and DAC | Fix the observed playback failure before release; a successful IPC response cannot close this gate. |
+
+Use the existing estimate of 5–8 focused implementation sessions plus device checks only if the target baseline confirms the physical chain. It is an initial planning allowance, not a delivery date. Re-estimate after milestone 0 and after reliable album replacement in milestone 2. Keep displays, enclosure refinement, automatic import, play counts, and additional providers outside this release.
+
 ## Shared signals
 
 | Signal | Current evidence |
@@ -84,7 +116,7 @@ Start the three independent tasks together where practical. Coordinate edits to 
 | Album registration | Two compiled mappings |
 | Writer delivery | Source present; runnable command pending |
 | Controls | mpv adapter methods exist; application input pending |
-| Build and tests | No SDK or mpv available in the review environment; no build run |
+| Build and tests | Initial review ran no build. Planning workspace has .NET SDK 10.0.110; build and application tests remain unrun. mpv and target devices are unavailable here. |
 | Device release | No target acceptance evidence recorded |
 | Completion estimate | Planning judgement: about 5–8 focused implementation sessions plus device checks, if LUC-08 confirms the physical chain works |
 
@@ -116,3 +148,4 @@ The writing uses short procedural statements inspired by the previously selected
 - 17 October 2026: Recovered the physical album concept and current software direction.
 - 17 October 2026: Reviewed the first repository commit and the relevant official protocols.
 - 17 October 2026: Created three workstream boards, twelve tasks, and a release acceptance record. Application code is unchanged by this documentation work.
+- 17 October 2026: Checked out PR #1 and added an ordered execution plan, milestone gates, the first implementation change, and risks that can change delivery.
