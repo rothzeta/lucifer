@@ -15,6 +15,9 @@ public sealed class LuciferOptions
     public TimeSpan ReaderTimeout { get; private init; }
     public TimeSpan MpvStartTimeout { get; private init; }
     public TimeSpan HttpTimeout { get; private init; }
+
+    /// <summary>How long the reader must report no tag before the object counts as removed. Default 1.5 s.</summary>
+    public TimeSpan AbsenceConfirmation { get; private init; }
     public string NavidromeUrl { get; private init; } = "";
     public string NavidromeUser { get; private init; } = "";
     public string NavidromePassword { get; private init; } = "";
@@ -39,6 +42,7 @@ public sealed class LuciferOptions
         string mpv = "", audio = "", catalogue = "", url = "", user = "", password = "";
         var mpvTimeout = TimeSpan.Zero;
         var httpTimeout = TimeSpan.Zero;
+        var absence = TimeSpan.Zero;
 
         if (usesServer)
         {
@@ -47,6 +51,7 @@ public sealed class LuciferOptions
             catalogue = Text("LUCIFER_CATALOGUE_PATH", "catalogue.json");
             mpvTimeout = Seconds("LUCIFER_MPV_START_TIMEOUT_SECONDS", 5);
             httpTimeout = Seconds("LUCIFER_HTTP_TIMEOUT_SECONDS", 15);
+            absence = Milliseconds("LUCIFER_ABSENCE_CONFIRM_MS", 1500, 100, 60_000, errors, env);
             url = ServerUrl(env, errors);
             user = Required(env, "NAVIDROME_USER", errors);
             password = Required(env, "NAVIDROME_PASSWORD", errors);
@@ -65,6 +70,7 @@ public sealed class LuciferOptions
             ReaderTimeout = readerTimeout,
             MpvStartTimeout = mpvTimeout,
             HttpTimeout = httpTimeout,
+            AbsenceConfirmation = absence,
             NavidromeUrl = url,
             NavidromeUser = user,
             NavidromePassword = password,
@@ -106,6 +112,20 @@ public sealed class LuciferOptions
             return TimeSpan.FromSeconds(fallback);
         }
         return TimeSpan.FromSeconds(seconds);
+    }
+
+    private static TimeSpan Milliseconds(
+        string name, int fallback, int min, int max, List<FieldError> errors, Func<string, string?> env)
+    {
+        var value = env(name);
+        if (value is null)
+            return TimeSpan.FromMilliseconds(fallback);
+        if (!int.TryParse(value, out var ms) || ms < min || ms > max)
+        {
+            errors.Add(new(name, $"must be a whole number of milliseconds from {min} to {max}"));
+            return TimeSpan.FromMilliseconds(fallback);
+        }
+        return TimeSpan.FromMilliseconds(ms);
     }
 
     // Messages never repeat the value: it may carry credentials.
