@@ -83,6 +83,7 @@ public sealed class InputControls : IDisposable
     private readonly Dictionary<int, DateTimeOffset> _lastPress = [];
     private readonly Channel<TransportCommand> _commands;
     private readonly CancellationTokenSource _life = new();
+    private CancellationTokenSource? _linked;
     private string? _lostReason;
 
     public InputControls(
@@ -107,7 +108,8 @@ public sealed class InputControls : IDisposable
 
     public void Start(CancellationToken stop)
     {
-        var token = CancellationTokenSource.CreateLinkedTokenSource(stop, _life.Token).Token;
+        _linked = CancellationTokenSource.CreateLinkedTokenSource(stop, _life.Token);
+        var token = _linked.Token;
         Completed = Task.WhenAll(Task.Run(() => ReadAsync(token)), Task.Run(() => ApplyAsync(token)));
     }
 
@@ -176,5 +178,7 @@ public sealed class InputControls : IDisposable
     {
         _life.Cancel();
         _device.Dispose();
+        _linked?.Dispose();
+        _life.Dispose();
     }
 }

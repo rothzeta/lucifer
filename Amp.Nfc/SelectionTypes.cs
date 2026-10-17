@@ -36,7 +36,7 @@ public interface IPreparedAlbum
 }
 
 /// <summary>
-/// Album-apply boundary (completed in LUC-07). PrepareAsync may throw
+/// Album-apply boundary, implemented by <see cref="PlayerAlbumApplier"/>. PrepareAsync may throw
 /// <see cref="SelectionRejectedException"/> for a permanent rejection; any other exception is transient.
 /// </summary>
 public interface IAlbumApplier

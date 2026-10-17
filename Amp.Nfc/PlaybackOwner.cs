@@ -12,26 +12,15 @@ public enum TransportOutcome
 
 /// <summary>
 /// The one entry point for changing what the player does: album replacement (from the selection
-/// controller via the applier) and transport commands (LUC-09 routes controller events here).
+/// controller via <see cref="PlayerAlbumApplier"/>) and transport commands (from <see cref="InputControls"/>).
 /// Both run through the same operation lock inside <see cref="Mpv"/>, so a transport command can
 /// never interleave with a half-built queue, and the observed status it checks is the one in force
 /// while it runs. The owner holds no state of its own: wrapping the same <see cref="Mpv"/> twice is
-/// harmless, and <see cref="Status"/> is always mpv evidence (Loading/Playing/Paused/Ended/Failed),
-/// never inferred from what was last asked.
+/// harmless. Player status is read from <see cref="Mpv.Status"/>, which is always mpv evidence
+/// (Loading/Playing/Paused/Ended/Failed), never inferred from what was last asked.
 /// </summary>
 public sealed class PlaybackOwner(Mpv mpv)
 {
-    public MpvStatus Status => mpv.Status;
-
-    /// <summary>Why <see cref="Status"/> is Failed (a load failure, a stream deadline, or an incomplete album load).</summary>
-    public string? FailureDetail => mpv.FailureDetail;
-
-    public event Action<MpvStatus>? StatusChanged
-    {
-        add => mpv.StatusChanged += value;
-        remove => mpv.StatusChanged -= value;
-    }
-
     /// <summary>
     /// Replaces the queue with the album's stream URLs. <paramref name="stillWanted"/> is cancelled when a newer
     /// selection supersedes this one; it is checked immediately before the first mpv command and is not
@@ -42,7 +31,7 @@ public sealed class PlaybackOwner(Mpv mpv)
         mpv.LoadAlbumAsync(urls, stillWanted);
 
     /// <summary>
-    /// Transport entry point for play/pause, next and previous (LUC-09 routes controller events here).
+    /// Transport entry point for play/pause, next and previous (controller events from <see cref="InputControls"/>).
     /// The policy is described on <see cref="Mpv.TransportAsync"/>: it runs under the same lock as album
     /// replacement, so a control received during a replacement runs after it, against the new album.
     /// With no applied album every command is Ignored.

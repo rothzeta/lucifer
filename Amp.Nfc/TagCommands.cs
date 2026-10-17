@@ -165,7 +165,7 @@ static class TagCommands
                 var text = new TextRecord(record);
 
                 output.WriteLine(
-                    $"TEXT [{text.LanguageCode}]: {text.Text}");
+                    $"TEXT [{LogText.Clean(text.LanguageCode)}]: {LogText.Clean(text.Text)}");
             }
             else
             {
