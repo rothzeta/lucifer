@@ -17,7 +17,8 @@ public sealed class ReaderLock : IDisposable
     {
         Directory.CreateDirectory(directory);
 
-        var name = new string(device.Select(c => char.IsAsciiLetterOrDigit(c) ? c : '_').ToArray());
+        // Named by the real device, so /dev/lucifer-nfc and /dev/ttyUSB0 are one reader.
+        var name = new string(Resolve(device).Select(c => char.IsAsciiLetterOrDigit(c) ? c : '_').ToArray());
         var path = Path.Combine(directory, $"lucifer-reader-{name}.lock");
 
         try
@@ -30,6 +31,17 @@ public sealed class ReaderLock : IDisposable
                 $"Reader {device} is already owned by another Lucifer process (lock {path}). " +
                 "Stop the player service before running tag commands, then start it again.");
         }
+    }
+
+    private static string Resolve(string device)
+    {
+        try
+        {
+            var full = Path.GetFullPath(device);
+            return new FileInfo(full).ResolveLinkTarget(returnFinalTarget: true)?.FullName ?? full;
+        }
+        catch (IOException) { return device; }
+        catch (UnauthorizedAccessException) { return device; }
     }
 
     public void Dispose() => _file.Dispose();

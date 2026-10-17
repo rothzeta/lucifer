@@ -148,7 +148,7 @@ public sealed class SelectionController
         }
         catch (Exception ex)
         {
-            Transient($"Could not read tag: {ex.Message}", now);
+            Transient($"Could not read tag: {UrlRedaction.Redact(ex.Message)}", now);
             return;
         }
 
@@ -243,7 +243,7 @@ public sealed class SelectionController
         {
             lock (_gate)
                 if (generation == _generation)
-                    Transient($"Could not start album: {ex.Message}", _clock.GetUtcNow());
+                    Transient($"Could not start album: {UrlRedaction.Redact(ex.Message)}", _clock.GetUtcNow());
         }
     }
 }

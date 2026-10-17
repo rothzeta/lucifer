@@ -148,7 +148,7 @@ public class NavidromeSourceTests
 
         var ex = await Assert.ThrowsAsync<NavidromeAuthenticationException>(() => Server(body).GetTracksAsync("al", CancellationToken.None));
 
-        Assert.False(ex is NavidromeRejectedException);
+        Assert.Equal(typeof(NavidromeAuthenticationException), ex.GetType());
         Assert.Contains(code.ToString(), ex.Message);
         Assert.DoesNotContain("hunter2", ex.Message);
     }
@@ -200,7 +200,8 @@ public class NavidromeSourceTests
     {
         var ex = await Assert.ThrowsAsync<NavidromeMalformedException>(() => Server(body).GetTracksAsync("al", CancellationToken.None));
 
-        Assert.False(ex is NavidromeRejectedException);
+        Assert.Equal(typeof(NavidromeMalformedException), ex.GetType());
+        Assert.False(string.IsNullOrWhiteSpace(ex.Message));
     }
 
     // ---- transport, deadline, cancellation ---------------------------------------------------

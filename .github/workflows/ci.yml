@@ -22,6 +22,8 @@ jobs:
         run: dotnet build
       - name: Test
         run: dotnet test
+      - name: lucifer-maint reads the env file literally
+        run: deploy/test-lucifer-maint.sh
       - name: Package (both runtime identifiers)
         run: |
           deploy/publish.sh --rid linux-arm64 --version ci --out dist

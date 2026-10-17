@@ -609,4 +609,42 @@ public class AlbumPlaybackTests : IDisposable
         Assert.Contains("--loop-file=no", args);
         Assert.Contains("--input-ipc-server=/run/s.sock", args);
     }
+
+    [Fact]
+    public void Mpv_is_started_without_a_terminal_and_with_log_messages_off()
+    {
+        var args = Mpv.LaunchArguments("alsa/x", "/run/s.sock");
+
+        Assert.Contains("--no-terminal", args);
+        Assert.Contains("--msg-level=all=no", args);
+    }
+
+    // Everything the application can print about a failing stream, with the failure details
+    // deliberately hostile (mpv text that carries the authenticated URL). Credentials in the URL
+    // are `u`, `t` and `s`; none may reach the output.
+    [Fact]
+    public async Task Failing_streams_never_put_authenticated_url_parameters_into_application_output()
+    {
+        var rig = await BuildAsync();
+        var output = new StringWriter();
+        rig.Mpv.StatusChanged += status => output.WriteLine(status == MpvStatus.Failed
+            ? $"Player: failed — {rig.Mpv.FailureDetail}"
+            : $"Player: {status.ToString().ToLowerInvariant()}");
+        await rig.Present("04AA", ReleaseA);
+        var loaded = rig.Peer.Requests.First(r => r.Name == "loadfile").Command[1].GetString()!;
+        Assert.Matches(@"[?&]t=", loaded); // the URL really carries the credential
+
+        await rig.Peer.Last!.EventAsync("end-file", new
+        {
+            reason = "error",
+            playlist_entry_id = rig.Peer.NextEntryId - 2,
+            file_error = $"loading failed: {loaded}",
+        });
+        Assert.Equal(MpvStatus.Failed, await Eventually(() => rig.Mpv.Status, s => s == MpvStatus.Failed));
+
+        var everything = string.Join("\n", output.ToString(), rig.Mpv.FailureDetail, string.Join("\n", rig.Log));
+        Assert.DoesNotMatch(@"[?&;](t|s|u)=", everything);
+        Assert.DoesNotContain("music.example.test", everything);
+        Assert.Contains("loading failed", rig.Mpv.FailureDetail);
+    }
 }

@@ -28,11 +28,11 @@ RuntimeDirectoryPreserve=yes
 # A deliberate stop (SIGTERM, exit 0) is not restarted.
 Restart=on-failure
 RestartSec=5
-# Signal the whole control group so mpv and any grandchildren die with the app
-# (the app only kills mpv itself).
-KillMode=control-group
+# SIGTERM goes to the app only, which stops the mpv it started; whatever is
+# left in the control group is SIGKILLed when TimeoutStopSec runs out.
+KillMode=mixed
 KillSignal=SIGTERM
-# Must exceed LUCIFER_SHUTDOWN_TIMEOUT_SECONDS (default 10, max 300).
+# Must exceed LUCIFER_SHUTDOWN_TIMEOUT_SECONDS (default 10; the app caps it at 25).
 TimeoutStopSec=30
 NoNewPrivileges=yes
 

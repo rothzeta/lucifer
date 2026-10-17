@@ -16,7 +16,7 @@ public sealed class LuciferOptions
     public TimeSpan MpvStartTimeout { get; private init; }
     public TimeSpan HttpTimeout { get; private init; }
 
-    /// <summary>Deadline for graceful shutdown after a stop request. Default 10 s, 1 to 300 s.</summary>
+    /// <summary>Deadline for graceful shutdown after a stop request. Default 10 s, 1 to 25 s (below the unit's 30 s TimeoutStopSec).</summary>
     public TimeSpan ShutdownTimeout { get; private init; }
 
     /// <summary>How long the reader must report no tag before the object counts as removed. Default 1.5 s.</summary>
@@ -197,9 +197,9 @@ public sealed class LuciferOptions
         var value = env(name);
         if (value is null)
             return TimeSpan.FromSeconds(10);
-        if (!int.TryParse(value, out var seconds) || seconds is < 1 or > 300)
+        if (!int.TryParse(value, out var seconds) || seconds is < 1 or > 25)
         {
-            errors.Add(new(name, "must be a whole number of seconds from 1 to 300"));
+            errors.Add(new(name, "must be a whole number of seconds from 1 to 25 (the service unit allows 30 s to stop)"));
             return TimeSpan.FromSeconds(10);
         }
         return TimeSpan.FromSeconds(seconds);

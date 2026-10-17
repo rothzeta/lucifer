@@ -101,7 +101,14 @@ public sealed class Mpv : IDisposable
         timeouts ??= MpvTimeouts.Default;
         RefuseLiveSocketOrRemoveStale(socketPath, timeouts);
 
-        var startInfo = new ProcessStartInfo { FileName = mpvPath, UseShellExecute = false };
+        // Output is redirected and discarded (not inherited): it must never reach the journal.
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = mpvPath,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
         foreach (var argument in LaunchArguments(audioDevice, socketPath))
             startInfo.ArgumentList.Add(argument);
 
@@ -110,6 +117,10 @@ public sealed class Mpv : IDisposable
         {
             child = Process.Start(startInfo)
                 ?? throw new MpvException(MpvFailureKind.StartFailed, "Could not start mpv.");
+            child.OutputDataReceived += static (_, _) => { };
+            child.ErrorDataReceived += static (_, _) => { };
+            child.BeginOutputReadLine();
+            child.BeginErrorReadLine();
         }
         catch (Exception ex) when (ex is not MpvException)
         {
@@ -138,6 +149,9 @@ public sealed class Mpv : IDisposable
     [
         "--idle=yes",
         "--no-video",
+        // mpv logs "Playing: <stream URL>" (with the Subsonic credentials) at info level.
+        "--no-terminal",
+        "--msg-level=all=no",
         "--loop-playlist=no",
         "--loop-file=no",
         $"--audio-device={audioDevice}",
@@ -587,7 +601,7 @@ public sealed class Mpv : IDisposable
         }
         else if (error.GetString() != "success")
         {
-            pending.Reply.TrySetException(new MpvException(MpvFailureKind.CommandError, $"mpv: {error.GetString()}"));
+            pending.Reply.TrySetException(new MpvException(MpvFailureKind.CommandError, $"mpv: {UrlRedaction.Redact(error.GetString() ?? "")}"));
         }
         else
         {
@@ -687,7 +701,7 @@ public sealed class Mpv : IDisposable
                         case "error":
                             DisarmStreamDeadline();
                             var why = ev.TryGetProperty("file_error", out var fe) ? fe.GetString() : null;
-                            return (MpvStatus.Failed, $"load failed: {why ?? "mpv reported an error"}");
+                            return (MpvStatus.Failed, $"load failed: {UrlRedaction.Redact(why ?? "mpv reported an error")}");
                         case "eof" when last:
                             DisarmStreamDeadline();
                             return (MpvStatus.Ended, null);

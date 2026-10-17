@@ -104,15 +104,15 @@ static class PlaySession
         {
             while (!stop.IsCancellationRequested)
             {
-                if (mpv.Lost is { } lost)
+                if (mpv.Lost is { } lost && !stop.IsCancellationRequested)
                     throw new FatalRunException($"mpv is gone: {lost.Message}");
 
-                if (input?.LostReason is { } gone && controls!.Required)
+                if (input?.LostReason is { } gone && controls!.Required && !stop.IsCancellationRequested)
                     throw new FatalRunException($"Required input device lost: {gone}");
 
                 await controller.StepAsync(stop);
 
-                if (watch.FatalReason is { } reason)
+                if (watch.FatalReason is { } reason && !stop.IsCancellationRequested)
                     throw new FatalRunException(reason);
 
                 await Task.Delay(Tick, stop);

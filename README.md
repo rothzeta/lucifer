@@ -50,7 +50,8 @@ Set `NAVIDROME_URL`, `NAVIDROME_USER`, and `NAVIDROME_PASSWORD` in the process e
 | `LUCIFER_READER_TIMEOUT_SECONDS` | 30 (wait for a tag in `tag read`/`tag write`) |
 | `LUCIFER_MPV_START_TIMEOUT_SECONDS` | 5 |
 | `LUCIFER_HTTP_TIMEOUT_SECONDS` | 15 |
-| `LUCIFER_SHUTDOWN_TIMEOUT_SECONDS` | 10 (1 to 300; deadline for graceful shutdown after SIGTERM or Ctrl+C) |
+| `LUCIFER_SHUTDOWN_TIMEOUT_SECONDS` | 10 (1 to 25, so the unit's `TimeoutStopSec=30` always exceeds it; deadline for graceful shutdown after SIGTERM or Ctrl+C) |
+| `LUCIFER_ABSENCE_CONFIRM_MS` | 1500 (100 to 60000; how long the reader must report no tag before the object counts as removed) |
 | `LUCIFER_INPUT_DEVICE` | none (absolute path of the Linux input device for the transport controls; see Transport controls) |
 | `LUCIFER_INPUT_MAP` | none (key mapping file; controls are off without it) |
 | `LUCIFER_INPUT_REQUIRED` | `false` (`true` makes a missing or lost input device fatal) |
@@ -87,7 +88,7 @@ Outcomes of a tap: a release not in the file reports `not in the catalogue`; an 
 1. Find the codes. With the controller attached, run `amp-nfc input inspect --device /dev/input/event3` (or set `LUCIFER_INPUT_DEVICE`; `--count <n>` stops after n events) and press each button. It prints `EV_KEY code=164 value=1 (press)` lines (sync records are hidden); value 1 is press, 0 release, 2 auto-repeat. It validates its arguments first, only reads the device, needs no server settings and takes no reader lock, so it can run while the player service is up. Prefer a stable `/dev/input/by-id/...` path over `eventN`.
 2. Write a mapping from [`input-map.example.json`](input-map.example.json) (its codes are placeholders, not verified for any controller): `keys` is a list of `{ "code": <EV_KEY code 0-767>, "action": "play" | "pause" | "toggle-pause" | "next" | "previous" }`. A code may be mapped once. Only EV_KEY events are used. `check` validates the file (a configured but invalid file is an error) without opening the device.
 3. Set `LUCIFER_INPUT_DEVICE` and `LUCIFER_INPUT_MAP`. A device that cannot be opened at start-up (or later disappears) is logged and the player keeps working without controls, unless `LUCIFER_INPUT_REQUIRED=true`, which makes it a start-up error or a fatal run error (exit 1, systemd restarts).
-4. Service access: the service user must be allowed to read the device node, typically membership of the `input` group. The unit file needs the line `SupplementaryGroups=input` in `[Service]` (deploy/lucifer.service is owned elsewhere; this is the line to add). With a udev rule on a by-id path, grant access to that node instead.
+4. Service access: the service user must be allowed to read the device node, typically membership of the `input` group. The packaged unit (`deploy/lucifer.service`) already has `SupplementaryGroups=input`; maintenance runs as the `lucifer` user need the group too (INSTALL.md). With a udev rule on a by-id path, grant access to that node instead.
 
 Policy (proposed v1):
 
@@ -97,7 +98,7 @@ Policy (proposed v1):
 - play (or play/pause) after the album ended restarts the selected album from its first track;
 - next and previous keep the pause state; during stream loading play/pause only change the pause preference and next/previous are ignored;
 - with no applied album, or after a failed load, controls do nothing; a new album always starts unpaused;
-- controls received while an album is being replaced wait and then apply to the new album (they share one operation lock with album replacement).
+- controls received while an album is being replaced wait on the shared operation lock and then act on the new album, subject to the loading rule above: play/pause apply, but next and previous are ignored while the new album is still loading (start of the stream, and each track change); press them again once playback has started.
 
 Repeats: only a key press acts. Auto-repeat (value 2) and release (value 0) are ignored for every action, so holding next does not skip through the album and holding play/pause does not flicker. A second press of the same key within `LUCIFER_INPUT_DEBOUNCE_MS` of the last accepted press is dropped as contact bounce; different keys are independent. At most 8 controls wait for mpv; more are dropped with a log line.
 
@@ -118,6 +119,8 @@ With the packaged systemd unit use `lucifer-maint` so the same environment file 
 ### Shutdown and recovery
 
 `play` stops gracefully on SIGTERM (service stop) or Ctrl+C: it cancels pending album work, closes the reader and mpv IPC, stops the mpv process it started, removes its own mpv socket and reader lock, and exits 0. This must finish within `LUCIFER_SHUTDOWN_TIMEOUT_SECONDS`; if it overruns, owned resources are released anyway and the process exits 1.
+
+mpv is started with `--no-terminal --msg-level=all=no` and its output is read and discarded, because its `Playing:` lines carry authenticated stream URLs; failure text that echoes a URL is redacted. If mpv exits after a stop was requested, the run still ends normally (exit 0). The packaged unit uses `KillMode=mixed`: SIGTERM goes to the app, which stops its own mpv, and leftovers are killed when `TimeoutStopSec` runs out.
 
 Supervisor policy (exit 1 so systemd restarts the group; a restart rescans, and a tag still present is selected fresh):
 

@@ -39,6 +39,23 @@ public class ReaderLockTests : IDisposable
     }
 
     [Fact]
+    public void A_symlink_to_the_reader_and_the_reader_itself_are_one_owner()
+    {
+        Directory.CreateDirectory(_dir);
+        var device = Path.Combine(_dir, "ttyUSB0");
+        File.WriteAllText(device, "");
+        var link = Path.Combine(_dir, "lucifer-nfc");
+        File.CreateSymbolicLink(link, device);
+        var relative = Path.Combine(_dir, "rel-nfc");
+        File.CreateSymbolicLink(relative, "ttyUSB0");
+
+        using var first = ReaderLock.Acquire(_dir, link);
+
+        Assert.Throws<ReaderOwnedException>(() => ReaderLock.Acquire(_dir, device));
+        Assert.Throws<ReaderOwnedException>(() => ReaderLock.Acquire(_dir, relative));
+    }
+
+    [Fact]
     public void Releasing_the_lock_removes_its_own_file_only()
     {
         Directory.CreateDirectory(_dir);

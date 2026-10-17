@@ -359,6 +359,76 @@ public class PlaySessionTests : IDisposable
         Assert.False(File.Exists(Socket));
     }
 
+    // ---- review fixes: child output and stop-time mpv exit ------------------------------------
+
+    private static string FdTarget(int pid, int fd) =>
+        new FileInfo($"/proc/{pid}/fd/{fd}").LinkTarget ?? "";
+
+    [Fact]
+    public async Task Mpv_child_output_is_not_forwarded_to_the_applications_own_streams()
+    {
+        // A child that prints a stream URL with credentials, as mpv's "Playing:" line would.
+        var script = Script(
+            $"echo $$ > {PidFile}\n" +
+            "echo 'Playing: https://music.example.test/rest/stream.view?u=u&t=TOKEN&s=SALT'\n" +
+            "echo 'Failed: https://music.example.test/rest/stream.view?u=u&t=TOKEN&s=SALT' >&2\n" +
+            "exec sleep 60");
+        ServeSocketLater();
+        using var mpv = await Mpv.StartAsync(script, Socket, "alsa/x", TimeSpan.FromSeconds(30), CancellationToken.None, FastIpc);
+        var pid = await ReadPid();
+
+        var ownOut = new FileInfo("/proc/self/fd/1").LinkTarget;
+        var ownErr = new FileInfo("/proc/self/fd/2").LinkTarget;
+        Assert.NotEqual(ownOut, FdTarget(pid, 1));
+        Assert.NotEqual(ownErr, FdTarget(pid, 2));
+        Assert.StartsWith("pipe:", FdTarget(pid, 1));
+        Assert.StartsWith("pipe:", FdTarget(pid, 2));
+    }
+
+    [Fact]
+    public async Task A_chatty_mpv_child_is_drained_and_never_blocks_on_its_output()
+    {
+        var done = Path.Combine(_dir, "done");
+        var script = Script(
+            $"echo $$ > {PidFile}\n" +
+            "head -c 3000000 /dev/zero | tr '\\0' 'x'\n" +
+            "head -c 3000000 /dev/zero | tr '\\0' 'y' >&2\n" +
+            $"touch {done}\n" +
+            "exec sleep 60");
+        ServeSocketLater();
+        using var mpv = await Mpv.StartAsync(script, Socket, "alsa/x", TimeSpan.FromSeconds(30), CancellationToken.None, FastIpc);
+
+        var sw = Stopwatch.StartNew();
+        while (!File.Exists(done) && sw.ElapsedMilliseconds < 10000) await Task.Delay(20);
+        Assert.True(File.Exists(done), "child blocked writing to a pipe nobody reads");
+    }
+
+    [Fact]
+    public async Task Mpv_exiting_after_a_stop_was_requested_is_a_clean_exit_not_a_fatal_failure()
+    {
+        // KillMode=mixed leaves mpv to the app, but a SIGTERM that reaches mpv first must still
+        // not turn an ordinary stop into exit 1.
+        for (var round = 0; round < 3; round++)
+        {
+            var options = Options(ChildScript());
+            ServeSocketLater();
+            using var stop = new CancellationTokenSource();
+            var run = Run(options, new ScriptedReader(), new FakeApplier(), stop.Token);
+            var pid = await ReadPid();
+            await WaitForPeer();
+            await Task.Delay(500);
+
+            Process.GetProcessById(pid).Kill();
+            stop.Cancel();
+
+            await run.WaitAsync(TimeSpan.FromSeconds(10)); // no FatalRunException
+            Assert.False(File.Exists(Socket));
+            foreach (var d in Enumerable.Reverse(_disposables)) d.Dispose();
+            _disposables.Clear();
+            File.Delete(PidFile);
+        }
+    }
+
     // ---- LUC-09: transport controls in service mode -------------------------------------------
 
     private static ControlsSetup Controls(string device, bool required = false, int code = 300) => new(

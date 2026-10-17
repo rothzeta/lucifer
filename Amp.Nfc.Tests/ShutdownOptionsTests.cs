@@ -23,6 +23,20 @@ public class ShutdownOptionsTests
     }
 
     [Fact]
+    public void Shutdown_deadline_is_capped_below_the_units_stop_timeout()
+    {
+        Assert.Equal(TimeSpan.FromSeconds(25), Load("25").Options!.ShutdownTimeout);
+        Assert.Contains(Load("26").Errors, e => e.Field == "LUCIFER_SHUTDOWN_TIMEOUT_SECONDS" && e.Message.Contains("25"));
+    }
+
+    [Fact]
+    public void Help_text_lists_the_shutdown_and_absence_settings()
+    {
+        Assert.Contains("LUCIFER_SHUTDOWN_TIMEOUT_SECONDS", CommandLine.HelpText);
+        Assert.Contains("LUCIFER_ABSENCE_CONFIRM_MS", CommandLine.HelpText);
+    }
+
+    [Fact]
     public void Shutdown_deadline_can_be_configured()
     {
         Assert.Equal(TimeSpan.FromSeconds(25), Load("25").Options!.ShutdownTimeout);
@@ -34,6 +48,8 @@ public class ShutdownOptionsTests
     [InlineData("soon")]
     [InlineData("")]
     [InlineData("301")]
+    [InlineData("300")]
+    [InlineData("26")]
     public void Invalid_shutdown_deadlines_are_rejected_by_field(string value)
     {
         var result = Load(value);

@@ -35,7 +35,7 @@ Copy both files to the Pi (for example with `scp`).
 ```sh
 sha256sum -c lucifer-1.0.0-linux-arm64.tar.gz.sha256     # must print OK
 sudo useradd --system --home-dir /var/lib/lucifer --create-home --shell /usr/sbin/nologin lucifer
-sudo usermod -aG dialout,audio lucifer                   # also set by the unit; needed for maintenance runs
+sudo usermod -aG dialout,audio,input lucifer             # also set by the unit; needed for maintenance runs
 sudo install -d -o root -g root /opt/lucifer/releases
 sudo tar -xzf lucifer-1.0.0-linux-arm64.tar.gz -C /opt/lucifer/releases
 sudo ln -sfn /opt/lucifer/releases/lucifer-1.0.0-linux-arm64 /opt/lucifer/current
@@ -57,7 +57,7 @@ The catalogue example contains two migration examples whose server availability 
 ### Configuration and the unit
 
 - Env file `/etc/lucifer/lucifer.env`: all settings are listed in the README; the example has no secrets.
-- Unit facts: runs as user `lucifer` with groups `dialout` (serial reader) and `audio` (DAC); `EnvironmentFile=/etc/lucifer/lucifer.env`; `RuntimeDirectory=lucifer` (`/run/lucifer`, preserved after stop, created at boot by tmpfiles); `Restart=on-failure` (the app exits 1 on fatal mpv/reader failure and 0 on a requested stop); `KillMode=control-group` (kills mpv and any of its children); `TimeoutStopSec=30`, which must stay above `LUCIFER_SHUTDOWN_TIMEOUT_SECONDS` (default 10, max 300). If you raise the app deadline, raise `TimeoutStopSec` above it.
+- Unit facts: runs as user `lucifer` with groups `dialout` (serial reader), `audio` (DAC) and `input` (transport controller); `EnvironmentFile=/etc/lucifer/lucifer.env`; `RuntimeDirectory=lucifer` (`/run/lucifer`, preserved after stop, created at boot by tmpfiles); `Restart=on-failure` (the app exits 1 on fatal mpv/reader failure and 0 on a requested stop); `KillMode=mixed` (SIGTERM goes to the app, which stops its own mpv; anything left in the control group is SIGKILLed after `TimeoutStopSec`); `TimeoutStopSec=30`, which exceeds `LUCIFER_SHUTDOWN_TIMEOUT_SECONDS` (default 10; the app rejects values above 25). Keep `TimeoutStopSec` above the app deadline if you change either.
 - Shared IPC directory: `LUCIFER_IPC_DIR=/run/lucifer` in the env file is used by the service and by `lucifer-maint`, so the reader lock stops a maintenance run from competing with the service. Do not set a different value for one of them.
 - Five failed starts within 120 s stop automatic restarts (`StartLimit*`); clear with `sudo systemctl reset-failed lucifer` after fixing the cause.
 
@@ -91,7 +91,7 @@ ls -l /run/lucifer                           # mpv socket and reader lock while 
 pgrep -a mpv                                 # exactly one mpv, child of the service
 ```
 
-The journal shows the PN532 firmware banner when the reader opens. Presenting a programmed object selects its album; the journal reports `not in the catalogue` or a stale mapping otherwise. Reboot check: `sudo reboot`, then repeat the above without logging in as another user.
+mpv's own output is discarded by the application (it would contain stream URLs with credentials), so the journal has the application's lines only. The journal shows the PN532 firmware banner when the reader opens. Presenting a programmed object selects its album; the journal reports `not in the catalogue` or a stale mapping otherwise. Reboot check: `sudo reboot`, then repeat the above without logging in as another user.
 
 ## 5. Add an album
 
@@ -160,4 +160,4 @@ sudo rm -rf /etc/lucifer /var/lib/lucifer && sudo userdel lucifer
 
 ## What is and is not proven
 
-Checked on a development machine: the package builds and unpacks, the checksum verifies, the unit passes `systemd-analyze verify` where available, the CI runs build and tests. Not proven: anything on the Pi (architecture choice, native dependencies, boot start, device groups, udev, ALSA name, KillMode behaviour with a real mpv, update and rollback). CI does not prove hardware.
+Checked on a development machine: the package builds and unpacks, the checksum verifies, the unit passes `systemd-analyze verify` where available, the CI runs build and tests. Not proven: anything on the Pi (architecture choice, native dependencies, boot start, device groups, udev, ALSA name, KillMode=mixed behaviour with a real mpv, update and rollback). CI does not prove hardware.

@@ -33,6 +33,8 @@ public static class CommandLine
           LUCIFER_READER_TIMEOUT_SECONDS     default 30 (wait for a tag in tag read/write)
           LUCIFER_MPV_START_TIMEOUT_SECONDS  default 5
           LUCIFER_HTTP_TIMEOUT_SECONDS       default 15
+          LUCIFER_SHUTDOWN_TIMEOUT_SECONDS   default 10 (1 to 25; graceful-stop deadline after SIGTERM or Ctrl+C)
+          LUCIFER_ABSENCE_CONFIRM_MS         default 1500 (100 to 60000; no-tag time before the object counts as removed)
           LUCIFER_INPUT_DEVICE           transport controls: absolute path of the Linux input device (no default)
           LUCIFER_INPUT_MAP              transport controls: key mapping file (no default; controls are off without it)
           LUCIFER_INPUT_REQUIRED         true to fail instead of running without controls (default false)
