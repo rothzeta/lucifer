@@ -16,6 +16,9 @@ public sealed class LuciferOptions
     public TimeSpan MpvStartTimeout { get; private init; }
     public TimeSpan HttpTimeout { get; private init; }
 
+    /// <summary>Deadline for graceful shutdown after a stop request. Default 10 s, 1 to 300 s.</summary>
+    public TimeSpan ShutdownTimeout { get; private init; }
+
     /// <summary>How long the reader must report no tag before the object counts as removed. Default 1.5 s.</summary>
     public TimeSpan AbsenceConfirmation { get; private init; }
     public string NavidromeUrl { get; private init; } = "";
@@ -43,6 +46,7 @@ public sealed class LuciferOptions
         var mpvTimeout = TimeSpan.Zero;
         var httpTimeout = TimeSpan.Zero;
         var absence = TimeSpan.Zero;
+        var shutdown = TimeSpan.Zero;
 
         if (usesServer)
         {
@@ -52,6 +56,7 @@ public sealed class LuciferOptions
             mpvTimeout = Seconds("LUCIFER_MPV_START_TIMEOUT_SECONDS", 5);
             httpTimeout = Seconds("LUCIFER_HTTP_TIMEOUT_SECONDS", 15);
             absence = Milliseconds("LUCIFER_ABSENCE_CONFIRM_MS", 1500, 100, 60_000, errors, env);
+            shutdown = ShutdownDeadline(env, errors);
             url = ServerUrl(env, errors);
             user = Required(env, "NAVIDROME_USER", errors);
             password = Required(env, "NAVIDROME_PASSWORD", errors);
@@ -71,6 +76,7 @@ public sealed class LuciferOptions
             MpvStartTimeout = mpvTimeout,
             HttpTimeout = httpTimeout,
             AbsenceConfirmation = absence,
+            ShutdownTimeout = shutdown,
             NavidromeUrl = url,
             NavidromeUser = user,
             NavidromePassword = password,
@@ -110,6 +116,20 @@ public sealed class LuciferOptions
         {
             errors.Add(new(name, "must be a whole number of seconds greater than zero"));
             return TimeSpan.FromSeconds(fallback);
+        }
+        return TimeSpan.FromSeconds(seconds);
+    }
+
+    private static TimeSpan ShutdownDeadline(Func<string, string?> env, List<FieldError> errors)
+    {
+        const string name = "LUCIFER_SHUTDOWN_TIMEOUT_SECONDS";
+        var value = env(name);
+        if (value is null)
+            return TimeSpan.FromSeconds(10);
+        if (!int.TryParse(value, out var seconds) || seconds is < 1 or > 300)
+        {
+            errors.Add(new(name, "must be a whole number of seconds from 1 to 300"));
+            return TimeSpan.FromSeconds(10);
         }
         return TimeSpan.FromSeconds(seconds);
     }

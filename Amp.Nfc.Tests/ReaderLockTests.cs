@@ -37,4 +37,28 @@ public class ReaderLockTests : IDisposable
         using var first = ReaderLock.Acquire(_dir, "/dev/ttyUSB0");
         using var second = ReaderLock.Acquire(_dir, "/dev/ttyUSB1");
     }
+
+    [Fact]
+    public void Releasing_the_lock_removes_its_own_file_only()
+    {
+        Directory.CreateDirectory(_dir);
+        var other = Path.Combine(_dir, "amp-mpv.sock");
+        File.WriteAllText(other, "");
+
+        ReaderLock.Acquire(_dir, "/dev/ttyUSB0").Dispose();
+
+        Assert.Empty(Directory.GetFiles(_dir, "lucifer-reader-*"));
+        Assert.True(File.Exists(other));
+    }
+
+    [Fact]
+    public void A_refused_second_owner_leaves_the_first_owners_lock_in_place()
+    {
+        using var first = ReaderLock.Acquire(_dir, "/dev/ttyUSB0");
+
+        Assert.Throws<ReaderOwnedException>(() => ReaderLock.Acquire(_dir, "/dev/ttyUSB0"));
+
+        Assert.Single(Directory.GetFiles(_dir, "lucifer-reader-*"));
+        Assert.Throws<ReaderOwnedException>(() => ReaderLock.Acquire(_dir, "/dev/ttyUSB0"));
+    }
 }

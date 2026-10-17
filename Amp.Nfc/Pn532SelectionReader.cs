@@ -10,8 +10,26 @@ namespace Amp.Nfc;
 /// lazily, once per presentation, when the controller asks. The binding returns null both for no
 /// target and for some transport failures, and this adapter does not pretend to tell them apart.
 /// </summary>
-sealed class Pn532SelectionReader(Pn532 reader) : ISelectionReader
+sealed class Pn532SelectionReader(Pn532 reader) : ISelectionReader, IReaderHealth
 {
+    /// <summary>
+    /// Asks the PN532 for its firmware version, which needs no tag. Healthy means it answered.
+    /// Whether the binding returns null or throws after a USB-to-TTL unplug is unverified (LUC-08).
+    /// </summary>
+    public ReaderHealthResult Check()
+    {
+        try
+        {
+            return reader.FirmwareVersion is not null
+                ? new(true, "")
+                : new(false, "PN532 did not answer the firmware version request.");
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return new(false, ex.Message);
+        }
+    }
+
     public ReaderObservation Poll()
     {
         try

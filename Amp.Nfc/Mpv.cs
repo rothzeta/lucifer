@@ -67,6 +67,12 @@ public sealed class Mpv : IDisposable
     /// <summary>Why the status is Failed, from mpv or from a deadline.</summary>
     public string? FailureDetail { get { lock (_gate) return _failure; } }
 
+    /// <summary>
+    /// Set once the process or IPC connection is gone for good (as opposed to a failed load, which
+    /// leaves the connection usable). The supervisor treats it as the essential player dying.
+    /// </summary>
+    public MpvException? Lost { get { lock (_gate) return _lost; } }
+
     public event Action<MpvStatus>? StatusChanged;
 
     /// <summary>Connect to an mpv that is already serving <paramref name="socketPath"/>; the caller owns it.</summary>
