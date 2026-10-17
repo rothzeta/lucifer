@@ -74,3 +74,4 @@ Closed: Herdr workspaces/sessions of luc-01..11-impl, v1-review-1, v1-review-2 (
 
 ## Follow-up request (after v1 software delivery)
 - AUTH-04 Owner, exact words: "have a readme written and pushed including setup and the inventory details". Scope: README rewrite (setup + hardware/software inventory), then push of `ruach/lucifer-v1-orchestrator` to `origin` (git@github.com:rothzeta/lucifer.git) as a new remote branch of the same name. NOT authorized by this: pushing master/pr-1/docs branches, opening or merging a PR, force-push, touching the Pi. Push follows review of the README.
+- README-1 launched: readme-1 (wFZ, temp <tmp>/ruach-herdr-hV5zH1, branch ruach/readme-1, worktree <worktrees>/readme-1).
