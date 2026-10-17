@@ -99,3 +99,4 @@ Closed: Herdr workspaces/sessions of luc-01..11-impl, v1-review-1, v1-review-2 (
 - DELIVERY-4 launched: wGG, temp <tmp>/ruach-herdr-Ji13MN, route claude-sonnet-5.5-medium; prompt sent.
 - DELIVERY-4 handoff valid (blocked at push by classifier; Coordinator pushed under AUTH-08): master f49202a -> 0d8d60d (merge of ruach/lucifer-v1-orchestrator, tree identical to ce70825, 399 tests, build 0/0). PR #1 became MERGED automatically (head ancestor of master); cannot be closed or deleted (GitHub API offers no deletion: DELETE returns 404). refs/pull/1/merge is gone; refs/pull/1/head = rewritten 93c59d2 (old unscrubbed objects no longer ref-reachable, only by SHA). delivery-4 closed (wGG), worktrees removed.
 - CODE-REVIEW-3 assigned (reviewer code-review-3, base origin/master 0d8d60d).
+- CODE-REVIEW-3 launched: wGH, temp <tmp>/ruach-herdr-H7gfLe, claude-opus-5.5-medium.
