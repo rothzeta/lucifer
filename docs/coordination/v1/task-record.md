@@ -96,3 +96,4 @@ Closed: Herdr workspaces/sessions of luc-01..11-impl, v1-review-1, v1-review-2 (
 ## Follow-up request 3 (merge to master, PR #1, second review)
 - AUTH-08 Owner, exact words: "have an agent merge the two branches into master, delete #1 and launch a review again." Interpretation (recorded): "the two branches" = docs/lucifer-v1-completion (PR #1 head) and ruach/lucifer-v1-orchestrator (which already contains the docs branch); "#1" = PR #1 (GitHub offers close, not delete; refs/pull/1/* cannot be removed by the owner); "review again" = a fresh independent whole-repo review of the merged master. Authorizes: merge into master and a normal (non-force) push of master; close PR #1 (delete if the API allows). Does NOT authorize: deleting branches, force-push, Pi changes.
 - DELIVERY-4 (delivery-4) and CODE-REVIEW-3 to follow.
+- DELIVERY-4 launched: wGG, temp <tmp>/ruach-herdr-Ji13MN, route claude-sonnet-5.5-medium; prompt sent.
