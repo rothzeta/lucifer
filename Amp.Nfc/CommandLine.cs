@@ -28,7 +28,8 @@ public static class CommandLine
           LUCIFER_NFC_DEVICE             default /dev/ttyUSB0
           LUCIFER_MPV_PATH               default mpv
           LUCIFER_AUDIO_DEVICE           default alsa/default:CARD=Pro
-          LUCIFER_IPC_DIR                default /tmp (mpv socket and reader lock)
+          LUCIFER_IPC_DIR                default $XDG_RUNTIME_DIR/lucifer, else /tmp/lucifer-<user>, created 0700
+                                         (mpv socket and reader lock)
           LUCIFER_CATALOGUE_PATH         default catalogue.json (release UUID -> Navidrome album ID; see README)
           LUCIFER_READER_TIMEOUT_SECONDS     default 30 (wait for a tag in tag read/write)
           LUCIFER_MPV_START_TIMEOUT_SECONDS  default 5

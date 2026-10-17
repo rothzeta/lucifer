@@ -11,6 +11,9 @@ public sealed class LuciferOptions
     public string MpvPath { get; private init; } = "";
     public string AudioDevice { get; private init; } = "";
     public string IpcDirectory { get; private init; } = "";
+
+    /// <summary>True when LUCIFER_IPC_DIR was unset and <see cref="IpcDirectory"/> is the per-user default (see <see cref="IpcDirectoryPolicy"/>).</summary>
+    public bool IpcDirectoryIsPrivateDefault { get; private init; }
     public string CataloguePath { get; private init; } = "";
     public TimeSpan ReaderTimeout { get; private init; }
     public TimeSpan MpvStartTimeout { get; private init; }
@@ -51,7 +54,8 @@ public sealed class LuciferOptions
         TimeSpan Seconds(string name, int fallback) => Deadline(env, name, fallback, errors);
 
         var nfc = Text("LUCIFER_NFC_DEVICE", "/dev/ttyUSB0");
-        var ipc = Text("LUCIFER_IPC_DIR", "/tmp");
+        var ipcIsDefault = env("LUCIFER_IPC_DIR") is null;
+        var ipc = Text("LUCIFER_IPC_DIR", IpcDirectoryPolicy.DefaultPath(env));
         var readerTimeout = Seconds("LUCIFER_READER_TIMEOUT_SECONDS", 30);
 
         string mpv = "", audio = "", catalogue = "", url = "", user = "", password = "";
@@ -101,6 +105,7 @@ public sealed class LuciferOptions
             MpvPath = mpv,
             AudioDevice = audio,
             IpcDirectory = ipc,
+            IpcDirectoryIsPrivateDefault = ipcIsDefault,
             CataloguePath = catalogue,
             ReaderTimeout = readerTimeout,
             MpvStartTimeout = mpvTimeout,

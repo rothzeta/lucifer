@@ -70,7 +70,7 @@ static class PlaySession
         ShutdownHooks hooks,
         ControlsSetup? controls)
     {
-        Directory.CreateDirectory(options.IpcDirectory);
+        IpcDirectoryPolicy.Prepare(options);
 
         // Cancellation here stops the child and removes its socket inside StartAsync.
         using var mpv = await Mpv.StartAsync(

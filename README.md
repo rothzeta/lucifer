@@ -101,7 +101,7 @@ Set `NAVIDROME_URL`, `NAVIDROME_USER` and `NAVIDROME_PASSWORD` in the process en
 | `LUCIFER_NFC_DEVICE` | `/dev/ttyUSB0` | Serial path of the PN532 adapter. Prefer a stable path (see INSTALL.md). |
 | `LUCIFER_MPV_PATH` | `mpv` | mpv executable (`play`, `check`). |
 | `LUCIFER_AUDIO_DEVICE` | `alsa/default:CARD=Pro` | mpv audio device. The default is a repository default, unverified on any device; list real ones with `mpv --audio-device=help`. |
-| `LUCIFER_IPC_DIR` | `/tmp` | Directory for the mpv socket and the reader lock. Must be identical for the service and maintenance runs (the package uses `/run/lucifer`). |
+| `LUCIFER_IPC_DIR` | `$XDG_RUNTIME_DIR/lucifer`, else `/tmp/lucifer-<user>` | Directory for the mpv socket and the reader lock. The default is created with mode 0700 and refused if it is a symlink, has another mode or is not writable by the user; an explicit value is used as given. Must be identical for the service and maintenance runs (the package uses `/run/lucifer`). |
 | `LUCIFER_CATALOGUE_PATH` | `catalogue.json` | Release UUID to Navidrome album mapping file. |
 | `LUCIFER_READER_TIMEOUT_SECONDS` | `30` | Wait for a tag in `tag read` and `tag write`. |
 | `LUCIFER_MPV_START_TIMEOUT_SECONDS` | `5` | mpv start deadline. |
