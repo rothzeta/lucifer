@@ -21,26 +21,35 @@ sealed class PlayerAlbumApplier(
 
         output.WriteLine(lookup.Message);
 
-        List<Track> tracks;
+        AlbumTracks result;
         try
         {
-            tracks = await navidrome.GetTracksAsync(album.NavidromeId, cancellationToken);
+            result = await navidrome.GetTracksAsync(album.NavidromeId, cancellationToken);
         }
         catch (StaleMappingException)
         {
             throw new SelectionRejectedException(
                 $"Stale mapping: Navidrome has no album {album.NavidromeId} for release {release}; fix it in {cataloguePath}. Current album keeps playing.");
         }
+        catch (NoTracksException)
+        {
+            throw new SelectionRejectedException("Album has no tracks. Current album keeps playing.");
+        }
         catch (NavidromeRejectedException ex)
         {
             throw new SelectionRejectedException($"{ex.Message}. Current album keeps playing.");
         }
+        // Authentication, transport and malformed-data failures propagate as transient: the
+        // controller retries with backoff and logs the credential-free message.
 
-        if (tracks.Count == 0)
-            throw new SelectionRejectedException("Album has no tracks.");
+        var tracks = result.Tracks;
+        if (result.MetadataIssue is { } issue)
+            output.WriteLine($"Album metadata issue: {issue}.");
 
         foreach (var track in tracks)
-            output.WriteLine($"  {track.Disc}.{track.Number:00} {track.Title}");
+            output.WriteLine(result.OrderedByPosition
+                ? $"  {track.Disc}.{track.Number:00} {track.Title}"
+                : $"  - {track.Title}");
 
         var auth = navidrome.CreateAuthentication();
         var urls = tracks.Select(track => navidrome.CreateStreamUrl(track.Id, auth)).ToArray();

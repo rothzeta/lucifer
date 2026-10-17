@@ -77,7 +77,18 @@ public class CatalogueSelectionGlueTests : IDisposable
     public async Task Other_server_refusal_is_a_permanent_rejection()
     {
         await Assert.ThrowsAsync<SelectionRejectedException>(() => Applier(() => Json(
+            """{"subsonic-response":{"status":"failed","error":{"code":10,"message":"x"}}}""")).PrepareAsync(ReleaseId.Parse(A), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Failed_authentication_is_transient_and_credential_free()
+    {
+        var ex = await Assert.ThrowsAnyAsync<Exception>(() => Applier(() => Json(
             """{"subsonic-response":{"status":"failed","error":{"code":40,"message":"x"}}}""")).PrepareAsync(ReleaseId.Parse(A), CancellationToken.None));
+
+        Assert.IsNotType<SelectionRejectedException>(ex);
+        Assert.IsType<NavidromeAuthenticationException>(ex);
+        Assert.DoesNotContain("t=", ex.Message);
     }
 
     [Fact]
@@ -105,5 +116,81 @@ public class CatalogueSelectionGlueTests : IDisposable
             """{"subsonic-response":{"status":"ok","album":{"song":[]}}}""")).PrepareAsync(ReleaseId.Parse(A), CancellationToken.None));
 
         Assert.NotNull(await Applier(() => Json(Album)).PrepareAsync(ReleaseId.Parse(A), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Malformed_server_data_is_transient_not_a_rejection()
+    {
+        var ex = await Assert.ThrowsAnyAsync<Exception>(
+            () => Applier(() => Json("<html>proxy error</html>")).PrepareAsync(ReleaseId.Parse(A), CancellationToken.None));
+
+        Assert.IsNotType<SelectionRejectedException>(ex);
+        Assert.IsType<NavidromeMalformedException>(ex);
+    }
+
+    [Fact]
+    public async Task Metadata_fallback_is_reported_to_the_operator_and_still_prepares()
+    {
+        var output = new StringWriter();
+        var options = LuciferOptions.Load(
+            n => n switch { "NAVIDROME_URL" => "https://music.example.test", "NAVIDROME_USER" => "u", "NAVIDROME_PASSWORD" => "p", _ => null },
+            Mode.Play).Options!;
+        var applier = new PlayerAlbumApplier(_catalogue, new Navidrome(new HttpClient(new Stub(() => Json(
+            """{"subsonic-response":{"status":"ok","album":{"song":[{"id":"x","title":"X","track":1},{"id":"y","title":"Y","track":1}]}}}"""))), options), null!, output);
+
+        Assert.NotNull(await applier.PrepareAsync(ReleaseId.Parse(A), CancellationToken.None));
+
+        Assert.Contains("metadata issue", output.ToString());
+        Assert.DoesNotContain("t=", output.ToString());
+    }
+
+    private sealed class Clock : TimeProvider
+    {
+        private DateTimeOffset _now = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        public override DateTimeOffset GetUtcNow() => _now;
+        public void Advance(TimeSpan span) => _now += span;
+    }
+
+    private sealed class HeldTag : ISelectionReader
+    {
+        public ReaderObservation Poll() => ReaderObservation.Present("04AA", () => new TagReadResult(TagReadKind.Release, ReleaseId.Parse(A)));
+    }
+
+    // Auth failure goes through the real controller: it is retried with backoff (not suppressed like
+    // a stale mapping) and logs a clear credential-free line. The fake clock stands in for time.
+    [Fact]
+    public async Task Controller_retries_authentication_failure_with_backoff_but_not_stale_mapping()
+    {
+        foreach (var (code, retried) in new[] { (40, true), (70, false) })
+        {
+            var requests = 0;
+            var log = new List<string>();
+            var clock = new Clock();
+            var applier = Applier(() =>
+            {
+                requests++;
+                return Json("""{"subsonic-response":{"status":"failed","error":{"code":CODE,"message":"x"}}}""".Replace("CODE", code.ToString()));
+            });
+            var controller = new SelectionController(
+                new HeldTag(), applier,
+                new SelectionPolicy(TimeSpan.FromSeconds(2), 4, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(4)),
+                clock, log.Add);
+
+            for (var i = 0; i < 40; i++)
+            {
+                clock.Advance(TimeSpan.FromMilliseconds(500));
+                await controller.StepAsync(CancellationToken.None);
+                await controller.WhenIdleAsync();
+            }
+
+            if (retried)
+            {
+                Assert.Equal(4, requests); // bounded by MaxAttempts, spaced by backoff
+                Assert.Contains(log, l => l.Contains("rejected the credentials") && l.Contains("Retrying"));
+            }
+            else
+                Assert.Equal(1, requests);
+            Assert.DoesNotContain(log, l => l.Contains("t=") || l.Contains("s="));
+        }
     }
 }
