@@ -1,0 +1,29 @@
+# Build and black-box tests only. CI has no Pi, PN532 reader, mpv, DAC,
+# Navidrome or systemd target: a green run does NOT prove hardware, audio or
+# installation behaviour (those are LUC-08 and LUC-12 device evidence).
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Build
+        run: dotnet build
+      - name: Test
+        run: dotnet test
+      - name: Package (both runtime identifiers)
+        run: |
+          deploy/publish.sh --rid linux-arm64 --version ci --out dist
+          deploy/publish.sh --rid linux-arm --version ci --out dist
+          (cd dist && sha256sum -c ./*.sha256)

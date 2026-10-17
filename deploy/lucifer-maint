@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Run one Lucifer command with the service's configuration, for maintenance
+# while the service is stopped (tag write, tag read, check).
+#
+#   sudo systemctl stop lucifer
+#   sudo -u lucifer /opt/lucifer/current/bin/lucifer-maint tag write --release <uuid>
+#   sudo systemctl start lucifer
+#
+# It reads the same environment file as the unit, so LUCIFER_IPC_DIR is the
+# same directory and the reader lock is shared with the service. The env file
+# must use plain KEY=value lines (no quotes, no spaces around =).
+set -euo pipefail
+env_file="${LUCIFER_ENV_FILE:-/etc/lucifer/lucifer.env}"
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+set -a
+# shellcheck disable=SC1090
+. "$env_file"
+set +a
+exec "$here/Amp.Nfc" "$@"

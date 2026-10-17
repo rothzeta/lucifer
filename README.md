@@ -86,7 +86,7 @@ To program or inspect a tag while the player service is installed:
 2. Run `tag write --release <uuid>` (or `tag read`).
 3. Start the player service.
 
-Service installation is part of later work; until then stop the running `play` process.
+With the packaged systemd unit use `lucifer-maint` so the same environment file and `LUCIFER_IPC_DIR` apply; see [docs/install/INSTALL.md](docs/install/INSTALL.md). Without the unit, stop the running `play` process.
 
 ### Shutdown and recovery
 
@@ -98,6 +98,10 @@ Supervisor policy (exit 1 so systemd restarts the group; a restart rescans, and 
 - the reader reports transport faults continuously (at least 20 over at least 10 s), or an explicit idle health probe (PN532 firmware query, every 60 s while no tag is present) fails 3 times in a row.
 
 Not fatal: a long idle period with no tag, transient Navidrome/network/album failures (retried within bounded attempts, then suppressed until the tag is presented again), and failed stream loads. The PN532 binding can return null for some transport failures, so only the health probe can catch those. Policy thresholds are code defaults, not options. Unplug/replug behaviour and systemd recovery are not yet verified on a device (LUC-08, LUC-12).
+
+### Packaging and installation
+
+`deploy/publish.sh --rid linux-arm64|linux-arm` builds a self-contained archive with a SHA-256 file; the RID must match the Pi userland, which is not yet recorded (LUC-08). The unit, env and udev examples, and install, update, roll-back and uninstall steps are in [docs/install/INSTALL.md](docs/install/INSTALL.md). Nothing there has been run on a Pi.
 
 ### Tests
 
