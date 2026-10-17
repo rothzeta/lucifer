@@ -611,11 +611,11 @@ public class AlbumPlaybackTests : IDisposable
     }
 
     [Fact]
-    public async Task Server_supplied_titles_are_logged_without_control_characters()
+    public async Task Server_supplied_titles_are_logged_without_control_or_format_characters()
     {
         var rig = await BuildAsync();
         var hostile = Json("{\"subsonic-response\":{\"status\":\"ok\",\"album\":{\"song\":["
-            + "{\"id\":\"t1\",\"title\":\"a\\u001b[31mred\\nforged line\",\"discNumber\":1,\"track\":1}]}}}");
+            + "{\"id\":\"t1\",\"title\":\"a\\u001b[31mred\\nforged line\\u202eevil\\u200b\",\"discNumber\":1,\"track\":1}]}}}");
         var options = LuciferOptions.Load(
             n => n switch { "NAVIDROME_URL" => "https://music.example.test", "NAVIDROME_USER" => "u", "NAVIDROME_PASSWORD" => "p", _ => null },
             Mode.Play).Options!;
@@ -626,7 +626,9 @@ public class AlbumPlaybackTests : IDisposable
         await applier.PrepareAsync(ReleaseId.From(Guid.Parse(ReleaseA)), CancellationToken.None);
 
         var text = output.ToString();
-        Assert.Contains("a?[31mred?forged line", text);
+        Assert.Contains("a?[31mred?forged line?evil?", text);
+        Assert.DoesNotContain('\u202e', text);
+        Assert.DoesNotContain('\u200b', text);
         Assert.DoesNotContain('\u001b', text);
         Assert.Single(text.Split('\n'), line => line.Contains("forged line"));
     }

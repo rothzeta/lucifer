@@ -70,8 +70,6 @@ static class PlaySession
         ShutdownHooks hooks,
         ControlsSetup? controls)
     {
-        IpcDirectoryPolicy.Prepare(options);
-
         // Cancellation here stops the child and removes its socket inside StartAsync.
         using var mpv = await Mpv.StartAsync(
             options.MpvPath,
@@ -104,10 +102,10 @@ static class PlaySession
         {
             while (!stop.IsCancellationRequested)
             {
-                if (mpv.Lost is { } lost && !stop.IsCancellationRequested)
+                if (mpv.Lost is { } lost)
                     throw new FatalRunException($"mpv is gone: {lost.Message}");
 
-                if (input?.LostReason is { } gone && controls!.Required && !stop.IsCancellationRequested)
+                if (input?.LostReason is { } gone && controls!.Required)
                     throw new FatalRunException($"Required input device lost: {gone}");
 
                 await controller.StepAsync(stop);

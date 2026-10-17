@@ -35,7 +35,7 @@ sealed class Navidrome(HttpClient http, LuciferOptions options)
             $"&t={auth.Token}" +
             $"&s={auth.Salt}" +
             "&v=1.16.1" +
-            "&c=amp-v0" +
+            "&c=lucifer" +
             "&f=json" +
             $"&id={Esc(albumId)}";
 
@@ -154,7 +154,7 @@ sealed class Navidrome(HttpClient http, LuciferOptions options)
         $"&t={auth.Token}" +
         $"&s={auth.Salt}" +
         "&v=1.16.1" +
-        "&c=amp-v0" +
+        "&c=lucifer" +
         "&format=raw" +
         $"&id={Esc(songId)}";
 

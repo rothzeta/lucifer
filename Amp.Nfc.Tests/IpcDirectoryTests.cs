@@ -86,6 +86,28 @@ public class IpcDirectoryTests : IDisposable
     }
 
     [Fact]
+    public void Prepare_refuses_a_default_directory_that_is_a_dangling_symlink()
+    {
+        var options = Load(("XDG_RUNTIME_DIR", _root));
+        Directory.CreateSymbolicLink(options.IpcDirectory, Path.Combine(_root, "missing"));
+
+        var ex = Assert.Throws<InvalidOperationException>(() => IpcDirectoryPolicy.Prepare(options));
+
+        Assert.Contains("symbolic link", ex.Message);
+    }
+
+    [Fact]
+    public void Prepare_refuses_a_file_at_the_default_directory_path()
+    {
+        var options = Load(("XDG_RUNTIME_DIR", _root));
+        File.WriteAllText(options.IpcDirectory, "x");
+
+        var ex = Assert.Throws<InvalidOperationException>(() => IpcDirectoryPolicy.Prepare(options));
+
+        Assert.Contains("not a directory", ex.Message);
+    }
+
+    [Fact]
     public void Prepare_leaves_an_explicit_directory_mode_alone()
     {
         var dir = Path.Combine(_root, "explicit");
