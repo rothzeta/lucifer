@@ -105,3 +105,4 @@ Closed: Herdr workspaces/sessions of luc-01..11-impl, v1-review-1, v1-review-2 (
 ## Follow-up request 4 (fix all review findings except N1)
 - AUTH-09 Owner, exact words: "fix all but n1". Scope: fix every CODE-REVIEW-3 finding (P3, S8, R6, R7, T1, S1b, S3b, C1b, Y3, TC1, S5, R1) except N1 (example album IDs stay). P4 (GitHub-served old SHAs) cannot be fixed by us. P3 history cleanup uses the earlier explicit rewrite/force-push authorization (AUTH-06/07; same three branches) after review. Records from here on contain no home, machine or temp paths.
 - FIX-3 assigned (implementer fix-3, branch ruach/fix-3).
+- FIX-3 launched (workspace wGM), route claude-sonnet-5.5-medium; prompt sent.
