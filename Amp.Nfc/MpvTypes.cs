@@ -1,7 +1,3 @@
-using System.Diagnostics;
-using System.Net.Sockets;
-using System.Text;
-using System.Text.Json;
 
 namespace Amp.Nfc;
 

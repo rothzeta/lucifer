@@ -1,12 +1,9 @@
-using System.Diagnostics;
-using System.Net.Sockets;
-using System.Text;
 using System.Text.Json;
 
 namespace Amp.Nfc;
 
 // Transport policy (play, pause, next, previous) over the IPC layer.
-public sealed partial class Mpv : IDisposable
+public sealed partial class Mpv
 {
     /// <summary>How long a track must have played before Previous restarts it instead of going back.</summary>
     public static readonly TimeSpan PreviousRestartAfter = TimeSpan.FromSeconds(3);

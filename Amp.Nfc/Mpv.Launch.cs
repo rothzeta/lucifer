@@ -1,12 +1,10 @@
-using System.Diagnostics;
 using System.Net.Sockets;
-using System.Text;
-using System.Text.Json;
+using System.Diagnostics;
 
 namespace Amp.Nfc;
 
 // Process launch, readiness and child/socket teardown.
-public sealed partial class Mpv : IDisposable
+public sealed partial class Mpv
 {
     /// <summary>Connect to an mpv that is already serving <paramref name="socketPath"/>; the caller owns it.</summary>
     public static Task<Mpv> ConnectAsync(
