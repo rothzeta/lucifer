@@ -11,11 +11,13 @@
 # KEY=value with no shell evaluation, so $ and spaces inside a value are kept
 # as written. systemd's EnvironmentFile treats some input differently (it drops
 # backslashes, strips surrounding whitespace and quotes), so this script does
-# not guess: a line or value that systemd would read differently is refused
-# with exit 2 (the value is never printed), so the service and a maintenance
-# run cannot silently disagree. Refused: a backslash anywhere in a value,
-# leading or trailing whitespace on a line or value, a value that starts or
-# ends with a quote, a control character other than tab, invalid UTF-8. Blank lines and lines starting with # are skipped.
+# not guess: a line or value that systemd would read differently, or that is
+# unsafe, is refused with exit 2 (the value is never printed), so the service
+# and a maintenance run cannot silently disagree. Refused: a backslash anywhere
+# in a value, leading or trailing whitespace on a line or value, a value that
+# starts or ends with a quote, invalid UTF-8, and control characters other than
+# tab (refused for safety; systemd itself passes some of them through).
+# Blank lines and lines starting with # are skipped.
 set -euo pipefail
 env_file="${LUCIFER_ENV_FILE:-/etc/lucifer/lucifer.env}"
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
