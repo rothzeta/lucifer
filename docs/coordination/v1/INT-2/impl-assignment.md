@@ -1,0 +1,8 @@
+# Assignment INT-2/integrate (role: implementer; integration)
+Task id: INT-2. Workspace: this worktree, branch ruach/luc-03-impl (LUC-03 candidate d270fef + report a680255).
+
+Outcome: combine LUC-04 into this branch; combined revision builds and all tests pass.
+Steps: `git merge --no-ff ruach/luc-04-impl` (LUC-04 candidate de88108, report ef51e13). Expect conflicts in Player.cs. Resolve within the two tasks' scope: keep LUC-04's SelectionController/IAlbumApplier flow and LUC-03's CatalogueFile.Resolve lookup in place of the private Albums dictionary/delegate; map outcomes onto the controller's semantics: unknown/stale mapping (including StaleMappingException) and other permanent API rejections -> SelectionRejectedException (suppressed until new presentation, current album keeps playing); network/transport failures -> transient retry. Keep every existing test from both branches (146 + 151-118 new); adjust only integration glue, never weaken assertions; add a test for the mapping->controller outcome glue if absent.
+Run `dotnet build` and `dotnet test` (DOTNET_ROOT=<home>/.dotnet), plus built-binary sanity (help, invalid command, check with the example catalogue).
+Scope: merge resolution and glue only. Do not edit BLACKBOARD.md, blackboards/**, task-record.md, docs/reviews/**.
+Handoff: docs/coordination/v1/INT-2/impl-report.md with the ruach-handoff block (source revisions, combined candidate/tested revision, conflict resolutions, commands/results, discoveries); validate with `bun <ruach>/skills/ruach-handoff/scripts/validate.ts <report> --repo .`; commit this assignment unchanged with the merge and report. Report final SHA.

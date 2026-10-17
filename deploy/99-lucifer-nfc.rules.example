@@ -1,0 +1,12 @@
+# UNVERIFIED-ON-DEVICE example. Install as /etc/udev/rules.d/99-lucifer-nfc.rules
+# only after LUC-08 has recorded the adapter identity on the Pi.
+#
+# 1. Inspect the adapter:  udevadm info -a -n /dev/ttyUSB0
+#    A CH341 adapter is usually idVendor 1a86, idProduct 7523. Many CH341
+#    adapters have no serial number, so two identical adapters cannot be told
+#    apart by ID; then match the USB port path instead (ENV{ID_PATH}).
+# 2. Edit the match values below to what the Pi reports.
+# 3. Reload:  sudo udevadm control --reload && sudo udevadm trigger
+# 4. Check:   ls -l /dev/lucifer-nfc
+# Then set LUCIFER_NFC_DEVICE=/dev/lucifer-nfc in /etc/lucifer/lucifer.env.
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7523", SYMLINK+="lucifer-nfc", GROUP="dialout", MODE="0660"

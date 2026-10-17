@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# Run one Lucifer command with the service's configuration, for maintenance
+# while the service is stopped (tag write, tag read, check).
+#
+#   sudo systemctl stop lucifer
+#   sudo -u lucifer /opt/lucifer/current/bin/lucifer-maint tag write --release <uuid>
+#   sudo systemctl start lucifer
+#
+# It reads the same environment file as the unit, so LUCIFER_IPC_DIR is the
+# same directory and the reader lock is shared with the service. Lines are
+# KEY=value with no shell evaluation, so $ and spaces inside a value are kept
+# as written. systemd's EnvironmentFile treats some input differently (it drops
+# backslashes, strips surrounding whitespace and quotes), so this script does
+# not guess: a line or value that systemd would read differently is refused
+# with exit 2 (the value is never printed), so the service and a maintenance
+# run cannot silently disagree. Refused: a backslash anywhere in a value,
+# leading or trailing whitespace on a line or value, a value that starts or
+# ends with a quote. Blank lines and lines starting with # are skipped.
+set -euo pipefail
+env_file="${LUCIFER_ENV_FILE:-/etc/lucifer/lucifer.env}"
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+n=0
+while IFS= read -r line || [ -n "$line" ]; do
+  n=$((n + 1))
+  line="${line%$'\r'}"
+  [[ "$line" =~ ^[[:space:]]*$ ]] && continue
+  case "$line" in
+    ''|[[:space:]]*'#'*|'#'*) continue ;;
+  esac
+  key="${line%%=*}"
+  if [ "$key" = "$line" ] || ! [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+    echo "lucifer-maint: $env_file:$n: not a KEY=value line" >&2
+    exit 2
+  fi
+  value="${line#*=}"
+  case "$value" in
+    *\\*|[[:space:]]*|*[[:space:]]|\"*|*\"|\'*|*\')
+      echo "lucifer-maint: $env_file:$n: $key: a value systemd would read" \
+           "differently (backslash, surrounding whitespace or quotes) is not supported" >&2
+      exit 2 ;;
+  esac
+  export "$key=$value"
+done < "$env_file"
+
+exec "$here/Amp.Nfc" "$@"
