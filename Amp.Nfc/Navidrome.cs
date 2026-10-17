@@ -14,9 +14,12 @@ record Authentication(
     string Salt,
     string Token);
 
+/// <summary>The server answered and refused the request; retrying the same request will not help.</summary>
+class NavidromeRejectedException(string message) : Exception(message);
+
 /// <summary>The server says the album ID does not exist: the catalogue mapping is stale.</summary>
 sealed class StaleMappingException(string albumId)
-    : Exception($"Navidrome has no album with ID {albumId}")
+    : NavidromeRejectedException($"Navidrome has no album with ID {albumId}")
 {
     public string AlbumId { get; } = albumId;
 }
@@ -58,7 +61,7 @@ sealed class Navidrome(HttpClient http, LuciferOptions options)
             var code = error.ValueKind == JsonValueKind.Object && error.TryGetProperty("code", out var c) ? c.GetInt32() : 0;
             if (code == 70)
                 throw new StaleMappingException(albumId);
-            throw new InvalidOperationException($"Navidrome refused the request (error {code})");
+            throw new NavidromeRejectedException($"Navidrome refused the request (error {code})");
         }
 
         var album = reply.GetProperty("album");
