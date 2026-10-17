@@ -10,7 +10,7 @@ The first device is planned as a Raspberry Pi 3B with a PN532 V3 reader behind a
 
 ## Status
 
-- **v1 software is delivered** (local branch `ruach/lucifer-v1-orchestrator`): reader ownership, tag writer, catalogue, Navidrome playback, transport controls, recovery and shutdown policy, and packaging with a systemd unit. The build is clean and 390 automated tests pass, using fakes and fixtures only.
+- **v1 software is delivered** (branch `ruach/lucifer-v1-orchestrator`): reader ownership, tag writer, catalogue, Navidrome playback, transport controls, recovery and shutdown policy, and packaging with a systemd unit. The build has 0 errors (2 known CA1416 warnings in the test project) and 390 automated tests pass, using fakes and fixtures only.
 - **v1 is not complete.** Device acceptance is open: nothing has been installed or run on a Pi, with the real reader, a real mpv, a DAC or a live Navidrome. The device baseline (LUC-08) and release gate (LUC-12) are pending. The pass/fail record is [blackboards/ACCEPTANCE.md](blackboards/ACCEPTANCE.md); automated passes there are not device passes.
 
 Statements below marked *planned* or *unverified* come from the repository's planning documents, not from a measured device.
@@ -63,7 +63,7 @@ Amp.Nfc input inspect --device /dev/input/by-id/<name> --count 10
 Amp.Nfc play
 ```
 
-With catalogue.example.json and placeholder server values, `check` prints:
+After `dotnet build` the binary is `Amp.Nfc/bin/Debug/net10.0/Amp.Nfc`. Run from the repository root with `NAVIDROME_URL=http://x:4533 NAVIDROME_USER=x NAVIDROME_PASSWORD=x LUCIFER_CATALOGUE_PATH=catalogue.example.json LUCIFER_IPC_DIR=/tmp` set (other settings at their defaults), `check` prints:
 
 ```text
 Configuration is valid.
@@ -206,7 +206,7 @@ The target device has not been inspected. The *Planned/assumed* column is taken 
 | Control device | KB1K discussed, not selected | _pending (LUC-08)_ | `ls -l /dev/input/by-id/`; `Amp.Nfc input inspect --device <path>` while pressing each button |
 | Service account and groups | user `lucifer` with groups `dialout`, `audio`, `input` (from the packaged unit and INSTALL.md) | _pending (LUC-08)_ | `id lucifer`; `systemctl show lucifer -p User -p SupplementaryGroups` |
 
-Read-only collection script, to run on the Pi (it changes nothing; omit lines for software not yet installed):
+Read-only collection script, to run on the Pi (it changes nothing; omit lines for software not yet installed). The script and `tag read` print USB and tag serial numbers, so review the output before pasting it into a public file.
 
 ```sh
 cat /proc/device-tree/model; echo
@@ -226,7 +226,7 @@ Paste the results into [blackboards/ACCEPTANCE.md](blackboards/ACCEPTANCE.md) (r
 ## Troubleshooting
 
 - Run `check` first: it names every invalid variable or catalogue field.
-- Exit code 2 means invalid arguments; exit 1 after an mpv or reader fault is the designed fail-and-restart behaviour under systemd.
+- Exit code 2 means invalid arguments, or configuration errors for `play`, `tag` and `input inspect` (`check` exits 1 for configuration errors). `check` and `play` also exit 1 on catalogue or input-map errors; exit 1 after an mpv or reader fault is the designed fail-and-restart behaviour under systemd.
 - Reader refused ("already owned by another Lucifer process"): the service or another `tag` run holds the lock. Stop the service, and use the same `LUCIFER_IPC_DIR`.
 - Reader missing or silent: confirm `LUCIFER_NFC_DEVICE` exists (`ls -l /dev/ttyUSB* /dev/serial/by-id/`), the user is in `dialout`, and `dmesg | tail` shows the adapter.
 - No sound: `mpv --audio-device=help` as the service user, compare with `LUCIFER_AUDIO_DEVICE`, and check the `audio` group.
