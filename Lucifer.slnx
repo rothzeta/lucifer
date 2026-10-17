@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="Amp.Nfc.Tests/Amp.Nfc.Tests.csproj" />
+  <Project Path="Amp.Nfc/Amp.Nfc.csproj" />
+</Solution>

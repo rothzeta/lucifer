@@ -1,0 +1,40 @@
+[Unit]
+Description=Lucifer NFC album player
+Documentation=file:///opt/lucifer/current/INSTALL.md
+After=network-online.target sound.target
+Wants=network-online.target
+# Stop restarting after 5 failed starts in 2 minutes (for example a bad config).
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=lucifer
+Group=lucifer
+# Reader (serial adapter), audio device and transport-control (input) access.
+SupplementaryGroups=dialout audio input
+EnvironmentFile=/etc/lucifer/lucifer.env
+WorkingDirectory=/var/lib/lucifer
+Environment=HOME=/var/lib/lucifer
+ExecStart=/opt/lucifer/current/bin/Amp.Nfc play
+# /run/lucifer holds the mpv socket and the reader lock. LUCIFER_IPC_DIR in the
+# env file must point here, and maintenance runs must use the same value.
+# Preserve keeps it after a stop so maintenance runs can use it; the
+# tmpfiles.d snippet creates it at boot.
+RuntimeDirectory=lucifer
+RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=yes
+# The app exits 1 on fatal mpv/reader failure (supervisor policy): restart it.
+# A deliberate stop (SIGTERM, exit 0) is not restarted.
+Restart=on-failure
+RestartSec=5
+# SIGTERM goes to the app only, which stops the mpv it started; whatever is
+# left in the control group is SIGKILLed when TimeoutStopSec runs out.
+KillMode=mixed
+KillSignal=SIGTERM
+# Must exceed LUCIFER_SHUTDOWN_TIMEOUT_SECONDS (default 10; the app caps it at 25).
+TimeoutStopSec=30
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

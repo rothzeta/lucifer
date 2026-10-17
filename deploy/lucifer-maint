@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Run one Lucifer command with the service's configuration, for maintenance
+# while the service is stopped (tag write, tag read, check).
+#
+#   sudo systemctl stop lucifer
+#   sudo -u lucifer /opt/lucifer/current/bin/lucifer-maint tag write --release <uuid>
+#   sudo systemctl start lucifer
+#
+# It reads the same environment file as the unit, so LUCIFER_IPC_DIR is the
+# same directory and the reader lock is shared with the service. Lines are
+# KEY=value, taken literally like systemd does for unquoted values: no shell
+# evaluation, so $, spaces and backslashes in a password are kept as written.
+# Blank lines and lines starting with # are skipped.
+set -euo pipefail
+env_file="${LUCIFER_ENV_FILE:-/etc/lucifer/lucifer.env}"
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+while IFS= read -r line || [ -n "$line" ]; do
+  line="${line%$'\r'}"
+  case "$line" in
+    ''|[[:space:]]*'#'*|'#'*) continue ;;
+  esac
+  key="${line%%=*}"
+  if [ "$key" = "$line" ] || ! [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+    echo "lucifer-maint: $env_file: not a KEY=value line: ${key:0:40}" >&2
+    exit 2
+  fi
+  export "$key=${line#*=}"
+done < "$env_file"
+
+exec "$here/Amp.Nfc" "$@"
