@@ -71,3 +71,6 @@ Closed: Herdr workspaces/sessions of luc-01..11-impl, v1-review-1, v1-review-2 (
 2. Real-server checks: Subsonic error codes, discNumber/track metadata, release MBID mappings for the two known albums and a third album; a true multi-disc album and a continuous pair.
 3. Device: install package, reboot, A03/A06/A11/A18-A20/A22/A23, mpv journal silence (no stream URL), systemd recovery, reader unplug/replug, 20 placements.
 4. Optional follow-ups: REVIEW-2 N1-N3, weak clean-stop test, mpv --no-config.
+
+## Follow-up request (after v1 software delivery)
+- AUTH-04 Owner, exact words: "have a readme written and pushed including setup and the inventory details". Scope: README rewrite (setup + hardware/software inventory), then push of `ruach/lucifer-v1-orchestrator` to `origin` (git@github.com:rothzeta/lucifer.git) as a new remote branch of the same name. NOT authorized by this: pushing master/pr-1/docs branches, opening or merging a PR, force-push, touching the Pi. Push follows review of the README.
