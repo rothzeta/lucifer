@@ -67,7 +67,7 @@ public static class Cli
                     TagCommands.Read(options, output, cancellationToken);
                     break;
                 case Mode.TagWrite:
-                    TagCommands.Write(options, invocation.Release!.Value, output, cancellationToken);
+                    TagCommands.Write(options, ReleaseId.From(invocation.Release!.Value), output, cancellationToken);
                     break;
             }
 

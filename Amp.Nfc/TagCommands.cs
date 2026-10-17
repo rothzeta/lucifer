@@ -18,13 +18,16 @@ static class TagCommands
         ReadNdef(tag, output);
     }
 
-    public static void Write(LuciferOptions options, Guid release, TextWriter output, CancellationToken cancellationToken)
+    public static void Write(LuciferOptions options, ReleaseId release, TextWriter output, CancellationToken cancellationToken)
     {
+        // Refuse bad input before the reader is opened.
+        TagCodec.Format(release);
+
         using var pn532 = OpenReader(options, output);
         var tag = WaitForTag(pn532, options.ReaderTimeout, output, cancellationToken);
 
         PrintTag(tag, output);
-        WriteNdef(tag, $"amp:album:1:mbid:{release:D}", output);
+        TagWriter.Write(new UltralightTagMedium(tag), release, output);
     }
 
     static Pn532 OpenReader(LuciferOptions options, TextWriter output)
@@ -149,6 +152,12 @@ static class TagCommands
 
         output.WriteLine($"NDEF records: {message.Records.Count}");
 
+        var identity = TagCodec.Read(
+            message.Records.Where(TextRecord.IsTextRecord).Select(r => new TextRecord(r).Text));
+        output.WriteLine(identity.Kind == TagReadKind.Release
+            ? $"Album identity: {identity.Release}"
+            : $"Album identity: {identity.Message}");
+
         foreach (var record in message.Records)
         {
             if (TextRecord.IsTextRecord(record))
@@ -162,50 +171,6 @@ static class TagCommands
             {
                 output.WriteLine(
                     $"Record: {record.Header.TypeNameFormat}, {record.Length} bytes");
-            }
-        }
-    }
-
-    static void WriteNdef(UltralightCard tag, string payload, TextWriter output)
-    {
-        output.WriteLine();
-        output.WriteLine($"Writing: {payload}");
-
-        if (!tag.IsFormattedNdef())
-        {
-            output.WriteLine("Formatting tag for NDEF...");
-
-            if (!tag.FormatNdef())
-                throw new InvalidOperationException(
-                    "Could not format tag for NDEF.");
-        }
-
-        var message = new NdefMessage();
-
-        message.Records.Add(
-            new TextRecord(
-                payload,
-                "en",
-                Encoding.UTF8));
-
-        if (!tag.WriteNdefMessage(message))
-            throw new InvalidOperationException(
-                "NDEF write failed.");
-
-        output.WriteLine("Write succeeded.");
-
-        if (!tag.TryReadNdefMessage(out var verification))
-            throw new InvalidOperationException(
-                "Could not read tag back after writing.");
-
-        output.WriteLine("Read-back:");
-
-        foreach (var record in verification.Records)
-        {
-            if (TextRecord.IsTextRecord(record))
-            {
-                var text = new TextRecord(record);
-                output.WriteLine($"  {text.Text}");
             }
         }
     }
