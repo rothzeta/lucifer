@@ -1,0 +1,11 @@
+{
+  // EXAMPLE ONLY - NOT VERIFIED FOR ANY CONTROLLER. Lucifer has no built-in key codes.
+  // Replace every "code" with what `amp-nfc input inspect` prints for your controller's buttons
+  // (the number after "EV_KEY code="), then point LUCIFER_INPUT_MAP at your copy.
+  // Actions: play, pause, toggle-pause, next, previous. Volume is not handled (use the DAC's knob).
+  "keys": [
+    { "code": 164, "action": "toggle-pause" },
+    { "code": 163, "action": "next" },
+    { "code": 165, "action": "previous" }
+  ]
+}

@@ -21,6 +21,18 @@ public sealed class LuciferOptions
 
     /// <summary>How long the reader must report no tag before the object counts as removed. Default 1.5 s.</summary>
     public TimeSpan AbsenceConfirmation { get; private init; }
+
+    /// <summary>Linux input device for the transport controls; null disables controls. No default.</summary>
+    public string? InputDevice { get; private init; }
+
+    /// <summary>Key mapping file for the transport controls; null disables controls. No default codes exist.</summary>
+    public string? InputMapPath { get; private init; }
+
+    /// <summary>When true, a device that cannot be opened (or is lost) is fatal instead of a logged degradation.</summary>
+    public bool InputRequired { get; private init; }
+
+    /// <summary>Presses of one key closer together than this count once. Default 250 ms, 0 to 5000.</summary>
+    public TimeSpan InputDebounce { get; private init; }
     public string NavidromeUrl { get; private init; } = "";
     public string NavidromeUser { get; private init; } = "";
     public string NavidromePassword { get; private init; } = "";
@@ -62,6 +74,24 @@ public sealed class LuciferOptions
             password = Required(env, "NAVIDROME_PASSWORD", errors);
         }
 
+        string? inputDevice = null, inputMap = null;
+        var inputRequired = false;
+        var inputDebounce = TimeSpan.Zero;
+
+        if (usesServer || mode == Mode.InputInspect)
+            inputDevice = InputPath(env, "LUCIFER_INPUT_DEVICE", errors);
+
+        if (usesServer)
+        {
+            inputMap = OptionalText(env, "LUCIFER_INPUT_MAP", errors);
+            inputRequired = Flag(env, "LUCIFER_INPUT_REQUIRED", errors);
+            inputDebounce = Milliseconds("LUCIFER_INPUT_DEBOUNCE_MS", 250, 0, 5000, errors, env);
+            if (inputRequired && inputDevice is null && env("LUCIFER_INPUT_DEVICE") is null)
+                errors.Add(new("LUCIFER_INPUT_DEVICE", "is required when LUCIFER_INPUT_REQUIRED is true"));
+            if (inputRequired && inputMap is null && env("LUCIFER_INPUT_MAP") is null)
+                errors.Add(new("LUCIFER_INPUT_MAP", "is required when LUCIFER_INPUT_REQUIRED is true"));
+        }
+
         if (errors.Count > 0)
             return new(null, errors);
 
@@ -77,6 +107,10 @@ public sealed class LuciferOptions
             HttpTimeout = httpTimeout,
             AbsenceConfirmation = absence,
             ShutdownTimeout = shutdown,
+            InputDevice = inputDevice,
+            InputMapPath = inputMap,
+            InputRequired = inputRequired,
+            InputDebounce = inputDebounce,
             NavidromeUrl = url,
             NavidromeUser = user,
             NavidromePassword = password,
@@ -94,6 +128,43 @@ public sealed class LuciferOptions
             return fallback;
         }
         return value;
+    }
+
+    private static string? InputPath(Func<string, string?> env, string name, List<FieldError> errors)
+    {
+        var value = env(name);
+        if (value is null)
+            return null;
+        if (InputDevicePath.Validate(value) is { } why)
+        {
+            errors.Add(new(name, why));
+            return null;
+        }
+        return value;
+    }
+
+    private static string? OptionalText(Func<string, string?> env, string name, List<FieldError> errors)
+    {
+        var value = env(name);
+        if (value is null)
+            return null;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            errors.Add(new(name, "must not be blank (unset it to disable)"));
+            return null;
+        }
+        return value;
+    }
+
+    private static bool Flag(Func<string, string?> env, string name, List<FieldError> errors)
+    {
+        var value = env(name);
+        if (value is null)
+            return false;
+        if (value is "true" or "false")
+            return value == "true";
+        errors.Add(new(name, "must be true or false"));
+        return false;
     }
 
     private static string Required(Func<string, string?> env, string name, List<FieldError> errors)

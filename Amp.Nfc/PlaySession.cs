@@ -19,10 +19,11 @@ static class PlaySession
         TextWriter output,
         TextWriter error,
         CancellationToken stop,
-        MpvTimeouts? mpvTimeouts = null)
+        MpvTimeouts? mpvTimeouts = null,
+        ControlsSetup? controls = null)
     {
         var hooks = new ShutdownHooks();
-        var run = RunCoreAsync(options, reader, health, createApplier, policy, output, error, stop, mpvTimeouts, hooks);
+        var run = RunCoreAsync(options, reader, health, createApplier, policy, output, error, stop, mpvTimeouts, hooks, controls);
 
         var stopped = new TaskCompletionSource();
         using var registration = stop.Register(() => stopped.TrySetResult());
@@ -46,6 +47,16 @@ static class PlaySession
             $"Shutdown did not finish within {options.ShutdownTimeout.TotalSeconds:0.##}s; abandoned it and released owned resources.");
     }
 
+    private static InputControls? OpenControls(ControlsSetup? controls, PlaybackOwner owner, Action<string> log, CancellationToken stop)
+    {
+        if (controls is null || ControlsSetup.TryOpen(controls, log) is not { } device)
+            return null;
+
+        var input = new InputControls(owner, controls.Mapping, device, controls.Debounce, TimeProvider.System, log);
+        input.Start(stop);
+        return input;
+    }
+
     private static async Task RunCoreAsync(
         LuciferOptions options,
         ISelectionReader reader,
@@ -56,7 +67,8 @@ static class PlaySession
         TextWriter error,
         CancellationToken stop,
         MpvTimeouts? mpvTimeouts,
-        ShutdownHooks hooks)
+        ShutdownHooks hooks,
+        ControlsSetup? controls)
     {
         Directory.CreateDirectory(options.IpcDirectory);
 
@@ -83,6 +95,9 @@ static class PlaySession
             TimeProvider.System,
             output.WriteLine);
 
+        // Controls go through the same owner (operation lock) as album replacement.
+        using var input = OpenControls(controls, new PlaybackOwner(mpv), output.WriteLine, stop);
+
         output.WriteLine("Waiting for album...");
 
         try
@@ -91,6 +106,9 @@ static class PlaySession
             {
                 if (mpv.Lost is { } lost)
                     throw new FatalRunException($"mpv is gone: {lost.Message}");
+
+                if (input?.LostReason is { } gone && controls!.Required)
+                    throw new FatalRunException($"Required input device lost: {gone}");
 
                 await controller.StepAsync(stop);
 
