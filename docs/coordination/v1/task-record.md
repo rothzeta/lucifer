@@ -101,3 +101,7 @@ Closed: Herdr workspaces/sessions of luc-01..11-impl, v1-review-1, v1-review-2 (
 - CODE-REVIEW-3 assigned (reviewer code-review-3, base origin/master 0d8d60d).
 - CODE-REVIEW-3 launched: wGH, temp <tmp>/ruach-herdr-H7gfLe, claude-opus-5.5-medium.
 - CODE-REVIEW-3 report valid (ruach/code-review-3@929d4f2, reviewed master 0d8d60d): 2 blocking, both non-public info: P3 coordinator/worker records written after the rewrite re-added the username and local paths (task-record, DELIVERY-4 and CODE-REVIEW-3 assignments); P4 GitHub still serves pre-rewrite commits by SHA (email in 38c01fe/e83d774; paths in 2f8e4f5) and published docs link to them (needs GitHub support / owner decision). No code blockers; 399 tests, build 0 warnings. Optional: N1 real-looking Navidrome album IDs in catalogue.example.json, S8 Unicode format chars in logs, R6 client name amp-v0, R7, plus open T1,S1b,S3b,C1b,Y3,TC1,S5,R1. Reviewer closed (wGH). Awaiting owner direction.
+
+## Follow-up request 4 (fix all review findings except N1)
+- AUTH-09 Owner, exact words: "fix all but n1". Scope: fix every CODE-REVIEW-3 finding (P3, S8, R6, R7, T1, S1b, S3b, C1b, Y3, TC1, S5, R1) except N1 (example album IDs stay). P4 (GitHub-served old SHAs) cannot be fixed by us. P3 history cleanup uses the earlier explicit rewrite/force-push authorization (AUTH-06/07; same three branches) after review. Records from here on contain no home, machine or temp paths.
+- FIX-3 assigned (implementer fix-3, branch ruach/fix-3).
