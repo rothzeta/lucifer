@@ -81,4 +81,4 @@ Closed: Herdr workspaces/sessions of luc-01..11-impl, v1-review-1, v1-review-2 (
 
 ## Follow-up request 2 (code and repository review)
 - AUTH-05 Owner, exact words: "send for a review, for simplicity, readability, immuuability, configurability, security and non public info in the repo." Scope: one independent read-only Reviewer on revision 2f8e4f5 (whole repo). NOT authorized by this: code changes, pushes, PRs. Findings come back to the owner; fixes need a further instruction.
-- CODE-REVIEW launched: reviewer code-review (branch ruach/code-review, worktree <worktrees>/code-review, base 2f8e4f5); assignment docs/coordination/v1/CODE-REVIEW/review-assignment.md.
+- CODE-REVIEW launched: reviewer code-review (branch ruach/code-review, worktree <worktrees>/code-review, base 2f8e4f5); assignment docs/coordination/v1/CODE-REVIEW/review-assignment.md.  Workspace wG3, temp <tmp>/ruach-herdr-cmbex1, route claude-opus-5.5-medium, base ea0f436; assignment sent via herdr agent prompt.
