@@ -30,18 +30,24 @@ public static class IpcDirectoryPolicy
         }
 
         var path = options.IpcDirectory;
-        var parent = Path.GetDirectoryName(path);
-        if (parent is not null)
-            Directory.CreateDirectory(parent);
-
         try
         {
+            var parent = Path.GetDirectoryName(path);
+            if (parent is not null)
+                Directory.CreateDirectory(parent);
+
             Directory.CreateDirectory(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         }
-        catch (IOException)
+        catch (IOException ex)
         {
-            // A dangling symlink or a file is in the way.
-            throw Unsafe(path, new DirectoryInfo(path).LinkTarget is not null ? "is a symbolic link" : "is not a directory");
+            // Name the obstacle only when it is really at the path; otherwise report the system's reason
+            // (a read-only file system, a full disk, ...).
+            if (new DirectoryInfo(path).LinkTarget is not null)
+                throw Unsafe(path, "is a symbolic link");
+            if (File.Exists(path))
+                throw Unsafe(path, "is not a directory");
+            throw new InvalidOperationException(
+                $"Default IPC directory {path} cannot be created: {ex.Message}. Set LUCIFER_IPC_DIR to a directory you own.", ex);
         }
 
         var info = new DirectoryInfo(path);

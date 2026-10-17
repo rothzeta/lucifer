@@ -108,6 +108,24 @@ public class IpcDirectoryTests : IDisposable
     }
 
     [Fact]
+    public void Prepare_reports_the_real_cause_when_nothing_is_at_the_default_path()
+    {
+        // The runtime directory's parent is a file, so creating the default directory fails with an
+        // IOException although nothing exists at the default path itself.
+        var blocker = Path.Combine(_root, "blocker");
+        File.WriteAllText(blocker, "x");
+        var options = Load(("XDG_RUNTIME_DIR", Path.Combine(blocker, "run")));
+
+        var ex = Assert.Throws<InvalidOperationException>(() => IpcDirectoryPolicy.Prepare(options));
+
+        Assert.DoesNotContain("not a directory", ex.Message);
+        Assert.DoesNotContain("Remove it", ex.Message);
+        Assert.Contains("cannot be created", ex.Message);
+        Assert.Contains("LUCIFER_IPC_DIR", ex.Message);
+        Assert.IsAssignableFrom<IOException>(ex.InnerException);
+    }
+
+    [Fact]
     public void Prepare_leaves_an_explicit_directory_mode_alone()
     {
         var dir = Path.Combine(_root, "explicit");
