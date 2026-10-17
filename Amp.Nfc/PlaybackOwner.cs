@@ -42,9 +42,10 @@ public sealed class PlaybackOwner(Mpv mpv)
         mpv.LoadAlbumAsync(urls, stillWanted);
 
     /// <summary>
-    /// Transport entry point for play/pause, next and previous. Boundary behaviour (previous on the first
-    /// track, next on the last) is mpv's `playlist-prev/next force` and is LUC-09's to define; this only
-    /// guarantees serialization and that nothing is sent while the status says nothing is playing.
+    /// Transport entry point for play/pause, next and previous (LUC-09 routes controller events here).
+    /// The policy is described on <see cref="Mpv.TransportAsync"/>: it runs under the same lock as album
+    /// replacement, so a control received during a replacement runs after it, against the new album.
+    /// With no applied album every command is Ignored.
     /// </summary>
     public async Task<TransportOutcome> TransportAsync(TransportCommand command, CancellationToken cancellationToken) =>
         await mpv.TransportAsync(command, cancellationToken) ? TransportOutcome.Applied : TransportOutcome.Ignored;

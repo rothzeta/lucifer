@@ -6,6 +6,7 @@ static class Player
 {
     public static async Task RunAsync(
         LuciferOptions options,
+        ControlsResolution controls,
         TextWriter output,
         TextWriter error,
         CancellationToken cancellationToken)
@@ -21,6 +22,8 @@ static class Player
         output.WriteLine("AMP");
         output.WriteLine($"PN532 {firmware.Version}");
 
+        output.WriteLine(controls.Setup is null ? $"Controls {controls.Description}" : $"Controls {controls.Description}.");
+
         var reader = new Pn532SelectionReader(pn532);
         await PlaySession.RunAsync(
             options,
@@ -30,6 +33,7 @@ static class Player
             new SupervisorPolicy(),
             output,
             error,
-            cancellationToken);
+            cancellationToken,
+            controls: controls.Setup);
     }
 }

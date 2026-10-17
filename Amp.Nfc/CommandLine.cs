@@ -1,8 +1,8 @@
 namespace Amp.Nfc;
 
-public enum Mode { Help, Play, TagRead, TagWrite, Check }
+public enum Mode { Help, Play, TagRead, TagWrite, Check, InputInspect }
 
-public sealed record Invocation(Mode Mode, Guid? Release = null, string? Error = null);
+public sealed record Invocation(Mode Mode, Guid? Release = null, string? Error = null, string? Device = null, int? Count = null);
 
 /// <summary>Parses arguments only; never touches configuration or hardware.</summary>
 public static class CommandLine
@@ -15,6 +15,10 @@ public static class CommandLine
           amp-nfc tag read                      Read the NDEF text on the tag placed on the reader.
           amp-nfc tag write --release <uuid>    Write a MusicBrainz release identity to a tag.
           amp-nfc check                         Validate configuration and catalogue; no reader or server access.
+          amp-nfc input inspect [--device <path>] [--count <n>]
+                                                Print type/code/value of input events from a controller (to find
+                                                its codes). Does not touch the reader. Device defaults to
+                                                LUCIFER_INPUT_DEVICE.
           amp-nfc help                          Show this help.
 
         The reader has one owner. Stop the player service before using `tag`, then start it again.
@@ -29,6 +33,10 @@ public static class CommandLine
           LUCIFER_READER_TIMEOUT_SECONDS     default 30 (wait for a tag in tag read/write)
           LUCIFER_MPV_START_TIMEOUT_SECONDS  default 5
           LUCIFER_HTTP_TIMEOUT_SECONDS       default 15
+          LUCIFER_INPUT_DEVICE           transport controls: absolute path of the Linux input device (no default)
+          LUCIFER_INPUT_MAP              transport controls: key mapping file (no default; controls are off without it)
+          LUCIFER_INPUT_REQUIRED         true to fail instead of running without controls (default false)
+          LUCIFER_INPUT_DEBOUNCE_MS      default 250 (0 to 5000)
         """;
 
     public static Invocation Parse(string[] args)
@@ -46,6 +54,8 @@ public static class CommandLine
                 return args.Length == 1 ? new(Mode.Check) : Fail("check takes no arguments");
             case "tag":
                 return ParseTag(args);
+            case "input":
+                return ParseInput(args);
             default:
                 return Fail($"unknown command '{args[0]}'");
         }
@@ -71,6 +81,37 @@ public static class CommandLine
             default:
                 return Fail($"unknown tag subcommand '{args[1]}'");
         }
+    }
+
+    private static Invocation ParseInput(string[] args)
+    {
+        if (args.Length < 2)
+            return Fail("input needs a subcommand: inspect");
+        if (args[1] != "inspect")
+            return Fail($"unknown input subcommand '{args[1]}'");
+
+        string? device = null;
+        int? count = null;
+        for (var i = 2; i < args.Length; i += 2)
+        {
+            if (i + 1 >= args.Length)
+                return Fail($"{args[i]} needs a value");
+
+            switch (args[i])
+            {
+                case "--device" when device is null:
+                    device = args[i + 1];
+                    break;
+                case "--count" when count is null:
+                    if (!int.TryParse(args[i + 1], out var n) || n <= 0)
+                        return Fail("--count must be a whole number greater than zero");
+                    count = n;
+                    break;
+                default:
+                    return Fail($"input inspect does not take '{args[i]}' here; use --device <path> and --count <n> once each");
+            }
+        }
+        return new(Mode.InputInspect, Device: device, Count: count);
     }
 
     private static Invocation Fail(string message) => new(Mode.Help, Error: message);

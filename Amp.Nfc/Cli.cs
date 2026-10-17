@@ -33,6 +33,13 @@ public static class Cli
             return Ok;
         }
 
+        if (invocation.Mode == Mode.InputInspect && invocation.Device is { } given
+            && InputDevicePath.Validate(given) is { } badDevice)
+        {
+            error.WriteLine($"Error: --device {badDevice}");
+            return Usage;
+        }
+
         var loaded = LuciferOptions.Load(env, invocation.Mode);
 
         if (loaded.Options is not { } options)
@@ -41,6 +48,25 @@ public static class Cli
             foreach (var e in loaded.Errors)
                 error.WriteLine($"  {e.Field}: {e.Message}");
             return invocation.Mode == Mode.Check ? Failed : Usage;
+        }
+
+        // Reads the device only; it never needs the reader, so it takes no reader lock.
+        if (invocation.Mode == Mode.InputInspect)
+        {
+            if ((invocation.Device ?? options.InputDevice) is not { } device)
+            {
+                error.WriteLine("Error: no input device; pass --device <path> or set LUCIFER_INPUT_DEVICE.");
+                return Usage;
+            }
+
+            try
+            {
+                return await InputInspect.RunAsync(device, invocation.Count, output, error, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return Ok;
+            }
         }
 
         CatalogueResult? catalogue = null;
@@ -56,6 +82,19 @@ public static class Cli
             }
         }
 
+        ControlsResolution? controls = null;
+        if (invocation.Mode is Mode.Check or Mode.Play)
+        {
+            controls = ControlsConfig.Resolve(options);
+            if (controls.Errors.Count > 0)
+            {
+                error.WriteLine($"Input mapping errors ({controls.MappingPath}):");
+                foreach (var e in controls.Errors)
+                    error.WriteLine($"  {e.Field}: {e.Message}");
+                return Failed;
+            }
+        }
+
         if (invocation.Mode == Mode.Check)
         {
             output.WriteLine("Configuration is valid.");
@@ -64,7 +103,8 @@ public static class Cli
             output.WriteLine($"  mpv:       {options.MpvPath} ({options.AudioDevice})");
             output.WriteLine($"  server:    {options.NavidromeUrl} (credentials set)");
             output.WriteLine($"  catalogue: {options.CataloguePath} ({catalogue!.Catalogue!.Count} albums)");
-            output.WriteLine("No reader or server was contacted; album IDs are not verified against the server.");
+            output.WriteLine($"  controls:  {controls!.Description}");
+            output.WriteLine("No reader, input device or server was contacted; album IDs are not verified against the server.");
             return Ok;
         }
 
@@ -75,7 +115,7 @@ public static class Cli
             switch (invocation.Mode)
             {
                 case Mode.Play:
-                    await Player.RunAsync(options, output, error, cancellationToken);
+                    await Player.RunAsync(options, controls!, output, error, cancellationToken);
                     break;
                 case Mode.TagRead:
                     TagCommands.Read(options, output, cancellationToken);

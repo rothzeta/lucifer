@@ -358,4 +358,134 @@ public class PlaySessionTests : IDisposable
         Assert.False(Alive(pid));
         Assert.False(File.Exists(Socket));
     }
+
+    // ---- LUC-09: transport controls in service mode -------------------------------------------
+
+    private static ControlsSetup Controls(string device, bool required = false, int code = 300) => new(
+        InputMapping.Parse($$"""{ "keys": [ { "code": {{code}}, "action": "toggle-pause" } ] }""").Mapping!,
+        () => EvdevInputDevice.Open(device),
+        required,
+        TimeSpan.Zero);
+
+    [Fact]
+    public async Task Controls_run_inside_the_play_session_and_reach_the_player_through_the_device()
+    {
+        var options = Options(ChildScript());
+        ServeSocketLater();
+        var fifo = Path.Combine(_dir, "event0");
+        using (var mk = Process.Start("mkfifo", fifo)!) await mk.WaitForExitAsync();
+        using var device = new FileStream(fifo, FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite, 1);
+        using var stop = new CancellationTokenSource();
+        var captured = new StringWriter();
+        var output = TextWriter.Synchronized(captured);
+        var loaded = new TaskCompletionSource();
+
+        var run = PlaySession.RunAsync(
+            options, new ScriptedReader { Script = _ => Tag() }, new FakeHealth(),
+            mpv => new FakeApplier(commit: async ct =>
+            {
+                await mpv.LoadAlbumAsync(["http://stream.example.test/1", "http://stream.example.test/2"], ct);
+                loaded.TrySetResult();
+            }),
+            QuickPolicy, output, TextWriter.Null, stop.Token, FastIpc, Controls(fifo));
+
+        await loaded.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        var peer = await WaitForPeer();
+        await peer.Last!.EventAsync("start-file", new { playlist_entry_id = peer.NextEntryId - 1 });
+        await peer.Last!.EventAsync("file-loaded");
+        await Task.Delay(200);
+
+        await device.WriteAsync(AdapterEncode(300, 1));
+        await device.FlushAsync();
+
+        var sw = Stopwatch.StartNew();
+        while (sw.ElapsedMilliseconds < 5000 && !peer.Requests.Any(r => r.Name == "set_property" && r.Command[2].GetBoolean()))
+            await Task.Delay(20);
+        Assert.Contains(peer.Requests, r => r.Name == "set_property" && r.Command[1].GetString() == "pause" && r.Command[2].GetBoolean());
+        Assert.Contains("Control toggle-pause: applied", Snapshot(captured));
+
+        stop.Cancel();
+        await run.WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
+    private static string Snapshot(StringWriter w)
+    {
+        lock (w) return w.ToString();
+    }
+
+    private static byte[] AdapterEncode(ushort code, int value) =>
+        InputAdapterTests.Encode(new InputEvent(InputEvent.Key, code, value), InputEventFormat.Native);
+
+    [Fact]
+    public async Task A_missing_input_device_is_a_logged_degradation_and_albums_still_play()
+    {
+        var options = Options(ChildScript());
+        ServeSocketLater();
+        using var stop = new CancellationTokenSource();
+        var captured = new StringWriter();
+        var output = TextWriter.Synchronized(captured);
+
+        var run = PlaySession.RunAsync(
+            options, new ScriptedReader(), new FakeHealth(), _ => new FakeApplier(), QuickPolicy,
+            output, TextWriter.Null, stop.Token, FastIpc, Controls(Path.Combine(_dir, "no-such-event")));
+        var pid = await ReadPid();
+        await WaitForPeer();
+        await Task.Delay(500);
+
+        Assert.False(run.IsCompleted);
+        Assert.Contains("controls disabled", Snapshot(captured));
+        stop.Cancel();
+        await run.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.False(Alive(pid));
+    }
+
+    [Fact]
+    public async Task A_missing_input_device_fails_startup_when_controls_are_required_and_cleans_up()
+    {
+        var options = Options(ChildScript());
+        ServeSocketLater();
+        using var stop = new CancellationTokenSource();
+
+        var run = PlaySession.RunAsync(
+            options, new ScriptedReader(), new FakeHealth(), _ => new FakeApplier(), QuickPolicy,
+            TextWriter.Null, TextWriter.Null, stop.Token, FastIpc, Controls(Path.Combine(_dir, "no-such-event"), required: true));
+
+        var ex = await Assert.ThrowsAsync<FatalRunException>(() => run);
+        Assert.Contains("no-such-event", ex.Message);
+        var pid = await ReadPid();
+        Assert.False(Alive(pid));
+        Assert.False(File.Exists(Socket));
+    }
+
+    [Fact]
+    public async Task Losing_a_required_input_device_after_startup_is_fatal_but_an_optional_one_is_not()
+    {
+        foreach (var required in new[] { true, false })
+        {
+            var path = Path.Combine(_dir, $"ended-{required}");
+            File.WriteAllBytes(path, []); // opens fine, then ends at once: the node vanished
+            var options = Options(ChildScript());
+            ServeSocketLater();
+            using var stop = new CancellationTokenSource();
+
+            var run = PlaySession.RunAsync(
+                options, new ScriptedReader(), new FakeHealth(), _ => new FakeApplier(), QuickPolicy,
+                TextWriter.Null, TextWriter.Null, stop.Token, FastIpc, Controls(path, required));
+
+            if (required)
+            {
+                await Assert.ThrowsAsync<FatalRunException>(() => run.WaitAsync(TimeSpan.FromSeconds(10)));
+            }
+            else
+            {
+                await Task.Delay(800);
+                Assert.False(run.IsCompleted);
+                stop.Cancel();
+                await run.WaitAsync(TimeSpan.FromSeconds(10));
+            }
+
+            foreach (var d in _disposables.OfType<FakeMpvPeer>().ToList()) { d.Dispose(); _disposables.Remove(d); }
+            File.Delete(PidFile);
+        }
+    }
 }

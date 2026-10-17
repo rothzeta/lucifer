@@ -51,6 +51,10 @@ Set `NAVIDROME_URL`, `NAVIDROME_USER`, and `NAVIDROME_PASSWORD` in the process e
 | `LUCIFER_MPV_START_TIMEOUT_SECONDS` | 5 |
 | `LUCIFER_HTTP_TIMEOUT_SECONDS` | 15 |
 | `LUCIFER_SHUTDOWN_TIMEOUT_SECONDS` | 10 (1 to 300; deadline for graceful shutdown after SIGTERM or Ctrl+C) |
+| `LUCIFER_INPUT_DEVICE` | none (absolute path of the Linux input device for the transport controls; see Transport controls) |
+| `LUCIFER_INPUT_MAP` | none (key mapping file; controls are off without it) |
+| `LUCIFER_INPUT_REQUIRED` | `false` (`true` makes a missing or lost input device fatal) |
+| `LUCIFER_INPUT_DEBOUNCE_MS` | 250 (0 to 5000) |
 
 ### Catalogue
 
@@ -75,6 +79,29 @@ Add or edit an album:
 4. No rebuild or restart is needed: `play` re-reads the file on every tap. If the file has become invalid, a tap reports the errors and the current album keeps playing.
 
 Outcomes of a tap: a release not in the file reports `not in the catalogue`; an ID that Navidrome says does not exist (error 70) reports a stale mapping naming the ID and release. Both leave the current album playing. `check` does not contact the server, so a stale ID is only found on a tap until live server verification (LUC-06, LUC-12) is done.
+
+### Transport controls
+
+`play` can read play/pause, next and previous from one Linux input device (evdev). Volume is not handled by the application; use the DAC's own knob. The controller and its event codes are not known yet (hardware baseline LUC-08), so **there are no default codes**: controls stay off until you give both a device and a mapping file, and `check` and the `play` start-up log say so (`controls: disabled: ...`).
+
+1. Find the codes. With the controller attached, run `amp-nfc input inspect --device /dev/input/event3` (or set `LUCIFER_INPUT_DEVICE`; `--count <n>` stops after n events) and press each button. It prints `EV_KEY code=164 value=1 (press)` lines (sync records are hidden); value 1 is press, 0 release, 2 auto-repeat. It validates its arguments first, only reads the device, needs no server settings and takes no reader lock, so it can run while the player service is up. Prefer a stable `/dev/input/by-id/...` path over `eventN`.
+2. Write a mapping from [`input-map.example.json`](input-map.example.json) (its codes are placeholders, not verified for any controller): `keys` is a list of `{ "code": <EV_KEY code 0-767>, "action": "play" | "pause" | "toggle-pause" | "next" | "previous" }`. A code may be mapped once. Only EV_KEY events are used. `check` validates the file (a configured but invalid file is an error) without opening the device.
+3. Set `LUCIFER_INPUT_DEVICE` and `LUCIFER_INPUT_MAP`. A device that cannot be opened at start-up (or later disappears) is logged and the player keeps working without controls, unless `LUCIFER_INPUT_REQUIRED=true`, which makes it a start-up error or a fatal run error (exit 1, systemd restarts).
+4. Service access: the service user must be allowed to read the device node, typically membership of the `input` group. The unit file needs the line `SupplementaryGroups=input` in `[Service]` (deploy/lucifer.service is owned elsewhere; this is the line to add). With a udev rule on a by-id path, grant access to that node instead.
+
+Policy (proposed v1):
+
+- play/pause toggles the current track (`play` and `pause` only ever set the state; they are ignored when already in it);
+- next advances; on the last track it stops at the album end (it does not wrap or repeat);
+- previous restarts the current track when it has played more than 3 s, otherwise goes to the previous track; on the first track it always restarts it;
+- play (or play/pause) after the album ended restarts the selected album from its first track;
+- next and previous keep the pause state; during stream loading play/pause only change the pause preference and next/previous are ignored;
+- with no applied album, or after a failed load, controls do nothing; a new album always starts unpaused;
+- controls received while an album is being replaced wait and then apply to the new album (they share one operation lock with album replacement).
+
+Repeats: only a key press acts. Auto-repeat (value 2) and release (value 0) are ignored for every action, so holding next does not skip through the album and holding play/pause does not flicker. A second press of the same key within `LUCIFER_INPUT_DEBOUNCE_MS` of the last accepted press is dropped as contact bounce; different keys are independent. At most 8 controls wait for mpv; more are dropped with a log line.
+
+Each control is logged (`Control next: applied` or `ignored`). Interactive mpv hotkeys prove nothing about this path, and the tests use fake events and a fake mpv: they do not prove hardware support. What the Pi must confirm is listed in the LUC-09 report.
 
 ### Reader ownership and tag maintenance
 
