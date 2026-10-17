@@ -28,3 +28,9 @@ dotnet SDK 10.0.110 at <home>/.dotnet/dotnet; no mpv; no /dev/ttyUSB0; /dev/snd 
 
 ## Next action
 Launch LUC-01 implementer; then independent review; deliver; proceed LUC-02.
+
+## Log
+- LUC-01: worker luc-01-impl launched (workspace wFK, worktree <worktrees>/luc-01-impl, branch ruach/luc-01-impl, base ad2f93e, temp dir <tmp>/ruach-herdr-aMeBMp). First attempt in linked mode failed with `worktree_uncertain` before creating anything (HERDR_WORKSPACE_ID resolved to unrelated repo tehom-brainlab); verified nothing existed; relaunched standalone with HERDR_WORKSPACE_ID unset. Assignment: docs/coordination/v1/LUC-01/impl-1-assignment.md. Awaiting report docs/coordination/v1/LUC-01/impl-1-report.md.
+- LUC-01 DONE-PENDING-REVIEW: report valid; candidate ruach/luc-01-impl@74159f4 (report at 8b5e17d); 56 tests pass; no hardware. Worker luc-01-impl closed (wFK), worktree removed, temp dir removed. Decision (Coordinator scheduling, not owner decision): chain tasks on integration line `ruach/v1-m1` (worktree <worktrees>/v1-m1, from 8b5e17d) and run independent review per milestone on the combined revision rather than per task; delivery to orchestrator branch only after milestone review.
+- LUC-02 and LUC-05 launched in parallel (base 34786e4 on ruach/v1-m1): luc-02-impl (wFM, temp <tmp>/ruach-herdr-SruBjL), luc-05-impl (wFN, temp <tmp>/ruach-herdr-T35zLf). Reports expected at docs/coordination/v1/LUC-0{2,5}/impl-1-report.md.
+- LUC-01 proposal from report: service unit and maintenance runs must share LUCIFER_IPC_DIR for reader lock (carry to LUC-10/11).
