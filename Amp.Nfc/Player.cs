@@ -12,8 +12,6 @@ record Album(
 
 static class Player
 {
-    const string TagPrefix = "amp:album:1:mbid:";
-
     static readonly Dictionary<string, Album> Albums = new(StringComparer.OrdinalIgnoreCase)
     {
         ["a24495e4-eb70-48cd-b0fa-31a606459d26"] =
@@ -81,29 +79,15 @@ static class Player
 
                 output.WriteLine($"Tag: {uid}");
 
-                var payload = ReadAlbumPayload(card);
+                var identity = TagCodec.Read(ReadTexts(card));
 
-                if (payload is null)
+                if (identity.Kind != TagReadKind.Release)
                 {
-                    output.WriteLine("No AMP album identity found.");
+                    output.WriteLine(identity.Message);
                     continue;
                 }
 
-                output.WriteLine($"Tag data: {payload}");
-
-                if (!payload.StartsWith(TagPrefix, StringComparison.OrdinalIgnoreCase))
-                {
-                    output.WriteLine("Unsupported AMP tag.");
-                    continue;
-                }
-
-                var mbid = payload[TagPrefix.Length..];
-
-                if (!Guid.TryParse(mbid, out _))
-                {
-                    output.WriteLine($"Invalid MusicBrainz ID: {mbid}");
-                    continue;
-                }
+                var mbid = identity.Release.ToString();
 
                 if (!Albums.TryGetValue(mbid, out var album))
                 {
@@ -172,22 +156,6 @@ static class Player
         };
     }
 
-    static string? ReadAlbumPayload(UltralightCard card)
-    {
-        if (!card.IsFormattedNdef())
-            return null;
-
-        if (!card.TryReadNdefMessage(out var message))
-            return null;
-
-        foreach (var record in message.Records)
-        {
-            if (!TextRecord.IsTextRecord(record))
-                continue;
-
-            return new TextRecord(record).Text;
-        }
-
-        return null;
-    }
+    static IEnumerable<string> ReadTexts(UltralightCard card) =>
+        new UltralightTagMedium(card).TryReadTexts(out var texts) ? texts : [];
 }
