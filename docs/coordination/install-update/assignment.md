@@ -1,0 +1,31 @@
+# Lucifer install and update assignment
+
+## Owner request and delivery
+
+The owner requested: "create an install script and an update command", followed by "launch an orchestrator with --approve for me to do it". Act as the Ruach Coordinator and carry this bounded feature through implementation, verification, independent review, and local delivery. The Coordinator launch uses Codex with automatic approval review (`--approve-for-me`). Use portable `--permissions auto-review` for specialist launches. Never bypass native approval or security dialogs.
+
+Start from the committed `origin/master` revision selected by this launch, not the main checkout's stale `pr-1` branch. The historical local branches contain superseded history: do not merge or push them. Deliver reviewed work as local commits on `ruach/lucifer-install-update`, retaining that branch and checkout for the owner. No push, remote merge, live Pi changes, or real installation onto the development host is authorized by this task.
+
+## Scope and existing behaviour
+
+Inspect `deploy/publish.sh`, `deploy/lucifer.service`, `deploy/lucifer-maint`, `deploy/lucifer.env.example`, `deploy/lucifer.tmpfiles.conf`, `docs/install/INSTALL.md`, README, and CI before assigning implementation. Published self-contained archives already contain VERSION, RID, bin, config examples, systemd, udev examples, and installation instructions; they have adjacent SHA-256 files. Installed releases use `/opt/lucifer/releases` and `/opt/lucifer/current`, configuration lives in `/etc/lucifer`, mutable data in `/var/lib/lucifer`, runtime files in `/run/lucifer`, and the service runs as user lucifer.
+
+Provide a simple first-install script and a convenient installed update command. A local published archive plus its checksum is the baseline input; automatic release downloads and new hosting are not required. Pick a clear CLI, document exact usage and defaults, and include the commands in the published package as appropriate. Reuse the existing service, maintenance wrapper, and package layout. Avoid unrelated application refactoring.
+
+Installation must validate prerequisites and arguments before changing the host, verify the selected archive and target userland RID, create the service account/groups and directories idempotently, install the release and service support files, and initialize missing configuration/catalogue without overwriting owner changes. Newly generated placeholder credentials must lead to clear configuration instructions rather than an unconditional restart loop. Never source untrusted environment files or print credentials. Handle existing installations deliberately.
+
+Update must preserve configuration, catalogue, input map, and prior releases; stage and validate the new package before stopping playback; switch releases without a partially applied current path; update unit/support files where needed; reload systemd and respect intended service state. Define and test failure behaviour. A failed update must retain a usable previous installation and restore prior unit/support state when changed. Expose a practical rollback procedure or command. Reject archive traversal or unsafe entries before privileged extraction; do not treat the checksum as proof of package publisher identity. Use restrictive permissions for secrets and root ownership for installed executables.
+
+## Verification and acceptance
+
+Test shell syntax, help and invalid argument behaviour, first install, repeat install, success update, checksum failure, wrong RID, malformed/unsafe packages, configuration preservation, rollback after activation failure, and appropriate handling of an inactive service. Use temporary roots and controlled command stubs or another isolated harness; do not modify the host's accounts, systemd units, or real installation. Tests must verify externally observable effects and failure ordering. Specialists may add or modify tests but may not weaken existing application expectations or release acceptance requirements.
+
+Run relevant existing deployment checks and application build/tests when justified by packaging changes. Check that a published archive includes the new entry points and the documented usage matches their help. Have an independent Reviewer assess the exact combined revision, especially privileged extraction, config preservation, service lifecycle, atomic activation, and rollback. Fix blocking findings, reverify, and obtain acceptance before delivery. Keep real-Pi installation and device acceptance explicitly unverified; test stubs are not physical evidence.
+
+## Coordination and records
+
+Read the canonical Coordinator role and select/load the installed feature workflow. Delegate code, testing, technical verification, independent review, integration, and delivery to specialists according to that workflow. Use ruach-herdr for launches and named Herdr agent commands for assignment and monitoring. Canonical resources and routing catalogs are supplied in the initial prompt; use the declared preferred worker routes with no invented fallback. Include explicit repo, cwd, resources, catalogs, fresh worker worktree/name, and the committed prerequisite base in every worker launch. Preserve user focus and all unrelated sessions and files.
+
+Copy this assignment into `docs/coordination/install-update/assignment.md` and maintain `docs/coordination/install-update/task-record.md`. Store specialist assignments and mechanically validated ruach-handoff reports under that directory. Record owner authorizations before dependent actions. Use relative paths or neutral placeholders for local machine/user locations in durable records: prior repository history was scrubbed for privacy, so do not reintroduce private home paths, hostnames, usernames, personal email addresses, or Claude/Anthropic co-author trailers in commits. Keep disposable logs outside version control.
+
+Continue autonomously until reviewed local delivery is complete or a specific external dependency prevents further progress. Clean up completed specialist sessions and temporary worktrees after preserving commits and reports; keep your orchestrator checkout for owner review. Finish with exact install/update/rollback usage, delivered revision, test and review evidence, and any remaining limitations.
