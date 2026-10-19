@@ -1,0 +1,56 @@
+# Publishes a GitHub Release for a version tag (v*) or a manual run naming an
+# existing tag. Assets are exactly what install.sh and `lucifer-install` download:
+#   lucifer-<tag>-linux-arm64.tar.gz(+.sha256), lucifer-<tag>-linux-arm.tar.gz(+.sha256),
+#   lucifer-install(+.sha256)
+# A tag containing '-' (for example v1.0.0-rc1) is marked a prerelease, which the
+# "latest stable" lookup ignores. CI does not prove hardware or installation.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to build and release (v*)
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+    steps:
+      - name: Check the tag name
+        run: |
+          [[ "$TAG" =~ ^v[0-9A-Za-z][A-Za-z0-9._+-]*$ ]] || { echo "tag '$TAG' must match v<version>" >&2; exit 1; }
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: refs/tags/${{ env.TAG }}
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          dotnet-version: 10.0.x
+      - name: Test
+        run: |
+          dotnet test
+          deploy/test-lucifer-maint.sh
+          deploy/test-lucifer-install.sh
+          deploy/test-lucifer-bootstrap.sh
+      - name: Package both runtime identifiers
+        run: |
+          deploy/publish.sh --rid linux-arm64 --version "$TAG" --out dist
+          deploy/publish.sh --rid linux-arm --version "$TAG" --out dist
+          cp deploy/lucifer-install dist/lucifer-install
+          (cd dist && sha256sum lucifer-install > lucifer-install.sha256 && sha256sum -c ./*.sha256)
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flags=(--verify-tag --title "$TAG" --generate-notes)
+          case "$TAG" in *-*) flags+=(--prerelease) ;; esac
+          gh release create "$TAG" "${flags[@]}" dist/*.tar.gz dist/*.tar.gz.sha256 dist/lucifer-install dist/lucifer-install.sha256

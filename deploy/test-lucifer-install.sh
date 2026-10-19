@@ -105,12 +105,13 @@ fresh
 run --help; check "help exit" [ $rc = 0 ]; check "help text" grep -q 'lucifer-install update' <<<"$out"
 run; check "no args exit 2" [ $rc = 2 ]
 run frob; check "unknown command exit 2" [ $rc = 2 ]
-run install; check "install without archive exit 2" [ $rc = 2 ]
+# Owner decision (GitHub Releases): no ARCHIVE means download. Point it at a closed port so no real network is used.
+LUCIFER_GITHUB_API=http://127.0.0.1:9 LUCIFER_INSTALL_TEST_INSECURE=1 run install; check "install without archive tries the download and fails (1)" [ $rc = 1 ]
 run install --bogus x; check "unknown option exit 2" [ $rc = 2 ]
 run install a b; check "two archives exit 2" [ $rc = 2 ]
 run install "$tmp/none.tar.gz"; check "missing archive exit 2" [ $rc = 2 ]
 run install --target-rid linux-x86 "$(pkgpath 1.0.0 linux-arm64)"; check "bad target rid exit 2" [ $rc = 2 ]
-run install --start; check "install --start without archive exit 2" [ $rc = 2 ]
+LUCIFER_GITHUB_API=http://127.0.0.1:9 LUCIFER_INSTALL_TEST_INSECURE=1 run install --start; check "install --start without archive tries the download and fails (1)" [ $rc = 1 ]
 run update --start "$(pkgpath 1.0.0 linux-arm64)"; check "update --start exit 2" [ $rc = 2 ]
 no_host_effects "arguments"; ok "help and invalid arguments"
 

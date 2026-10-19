@@ -26,6 +26,8 @@ jobs:
         run: deploy/test-lucifer-maint.sh
       - name: lucifer-install in an isolated root
         run: deploy/test-lucifer-install.sh
+      - name: install.sh and no-archive updates against a local fake GitHub
+        run: deploy/test-lucifer-bootstrap.sh
       - name: Package (both runtime identifiers)
         run: |
           deploy/publish.sh --rid linux-arm64 --version ci --out dist
