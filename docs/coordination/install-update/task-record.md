@@ -1,5 +1,15 @@
 # Install/update task record
 
+## Current completion snapshot
+
+- Complete: implementation/integration, meaningful independent verification, independent review/re-review, and authorized local delivery.
+- Destination: ruach/lucifer-install-update, owner checkout retained. Delivered merge a64ab733aedecabbd96f800ead09ea23a4c2dca1; evidence commit f1845edcb1692f8b1eaa20e4529411c9646d6fe2. Later Coordinator commit records completion only.
+- Accepted product: 7fe6ddfbbf7a9165dcbe2e6c7a938daf19ab5d74; verified candidate 43a05f71073c12d46817a78611ff7fe1dbf2a531; independently reviewed 8699215e3fb9093bb79e522fb62ac35e1a95fe99. Delivery worker confirms exact product equivalence.
+- Evidence: reports/verification-v4.md, reports/review-v2.md, reports/delivery.md; earlier findings and fixes preserved. No blockers.
+- All task-created specialist sessions/workspaces, standalone worktrees and exact private launch directories released by Coordinator. All task branches and reports retained. Coordinator/caller session and owner checkout intentionally retained; unrelated resources and stale source pr-1 protected.
+- Limits: physical Pi/systemd/accounts/audio and real target-binary maintenance acceptance unverified; no push or real installation. Hard-kill/power-loss recovery is documented manual recovery, not crash atomicity. Optional snapshot disk hygiene, backup-location documentation precision and narrow crash previous-link targeting remain, with explicit named rollback available.
+- Next action: owner review of retained local branch; no pending Coordinator work or further delivery authority inferred.
+
 Coordinator: current owner session. Workflow: canonical ruach-workflow-feature.
 Source and retained owner checkout: task checkout on `ruach/lucifer-install-update`.
 Base: `origin/master` resolved to `452637b20863d6db8f993bc8b1674aaa44534ad6`.
@@ -95,3 +105,10 @@ WORK-02 and WORK-03 reuse ends: reports committed and reachable on retained bran
 Resource release confirmed: closed standalone workspaces `wJT` and `wJX` (including worker sessions); removed clean verification/review worktrees with `git worktree remove` from retained owner checkout; removed their exact private launch directories `<temporary-root>/ruach-herdr-Mzxz4u` and `<temporary-root>/ruach-herdr-oKsK1e`. Retained branches `ruach/lucifer-iu-verify` and `ruach/lucifer-iu-review` preserve all reports/assignments/commits. No cleanup blocker. WORK-01 delivery remains active reservation; Coordinator checkout retained by owner.
 
 WORK-04 ready to assign: reviewed code 8699215, evidence successor 2795aea. Freeze target at this record commit, name exact SHA in assignments/delivery-v1.md before prompting. Deliver unchanged code and all evidence locally only; worker must confirm no destination movement, clean target and preserved source pr-1. Reports/delivery.md will identify merge delivered_revision separately from its later evidence-recording commit. Coordinator will append final disposition and clean WORK-01 after evidence preserved.
+
+WORK-04 delivery observed: `reports/delivery.md` created at `f1845edcb1692f8b1eaa20e4529411c9646d6fe2`; delivered merge `a64ab733aedecabbd96f800ead09ea23a4c2dca1` on `ruach/lucifer-install-update` with parents frozen destination `a6d602b` and accepted evidence successor `2795aea`. Reviewed revision `8699215`, accepted product `7fe6ddf`. Worker reports clean unchanged destination preconditions, no conflicts/edits, exact product equivalence outside coordination records, reused exact-code checks, no push/remote merge/install, neutral identity/no trailers. Handoff mechanically validated with --repo; assignment preserved byte-for-byte. Both worker and retained target clean at report commit f1845ed before final Coordinator record. Disposition: local delivery complete, authorization DEC-002 consumed for this action; no remote or installation authority inferred. Handled identity `f1845ed:docs/coordination/install-update/reports/delivery.md`.
+
+Phase: final cleanup. WORK-01/WORK-04 worker reuse ends; all commits/reports reachable from retained target and worker branch. Coordinator will close only task workspace wJS/session, remove clean standalone worker worktree and exact launch temp directory <temporary-root>/ruach-herdr-eYdjxK. Keep all task branches/evidence, source pr-1 and unrelated sessions, caller pane and owner-requested Coordinator checkout. Then record completion and residual limits.
+
+
+Final cleanup confirmed: closed wJS and removed its clean worker worktree and private launch directory; all three specialist workspaces/sessions released, branches retained. No cleanup blockers. Owner checkout intentionally retained by DEC-004, and caller pane is not closed. Final Coordinator record is evidence-only; product/test content remains the independently accepted revision. Task complete under the authorized local-delivery scope.
