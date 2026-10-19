@@ -2,8 +2,14 @@
 
 ## Current revision snapshot
 
-Reopened for owner clarification DEC-005, raw source owner-clarification.md. Phase understand/plan. Existing accepted local implementation retained; new work adds GitHub Releases onboarding and convenient release updates. Local target remains ruach/lucifer-install-update; no publication or live install authorized. Prior completed resources remain released. Next: delegate bounded implementation/integration and meaningful isolated verification, then independent review and separate local delivery.
-
+- Complete locally: DEC-005 GitHub Releases correction, combined verification, independent review/re-review, separate authorized local delivery and specialist cleanup.
+- Destination retained: ruach/lucifer-install-update, delivery merge 9951c826f4c8b4a9526d86bbfb9dfe0b36f2ae7a, evidence merge 831c15c1ee81a23a944df05596a83d4431311639. Final Coordinator commit changes records only.
+- Accepted/tested product e2ee0f4a4d7d76fb3b7237fd6ffb5f8cb2371bd2; reviewed abb2f1176973a7f992cf781bee599ad8b81d284d; independent acceptance evidence ed5ab055c439a81aca9deac03363ed915ff45642.
+- Evidence: reports/github-fixes-v2.md, reports/github-review-v2.md, reports/github-delivery.md; initial findings preserved. Combined deployment/bootstrap suites, exhaustive reviewer truncation sweep, local TLS redirect probes and both RID package builds pass; unchanged-app 408-test evidence reused. No local code/review blockers.
+- All task-created specialist sessions/workspaces, clean worktrees and exact private launch directories released; all task branches/reports retained. Owner checkout and caller session intentionally retained, stale source pr-1 and unrelated resources preserved.
+- Important external state: read-only inspection found public source repository, no releases/tags and no remote master/install.sh. No code/assets published under original no-push restriction. Therefore the live one-liner is not yet usable.
+- Limits: no remote Actions run, live release download or physical Pi/systemd acceptance. Checksums detect corruption, not publisher identity. Optional findings in independent review remain deferred.
+- Next owner decision: whether to authorize publishing reviewed code to the default branch and the first release. Coordinator proposal is master plus v0.1.0; this is a proposal, not owner authority, and no remote action may occur from silence.
 
 ## Earlier delivery snapshot (superseded for onboarding by DEC-005)
 
@@ -155,3 +161,10 @@ Phase local delivery preparation/resource cleanup. Local target remains ruach/lu
 WORK-06 reuse ends, reports preserved on retained branch ruach/lucifer-gh-review. Coordinator will close wK1 task workspace/session, remove clean standalone review worktree and exact private launch temp <temporary-root>/ruach-herdr-XhRYGd. WORK-05 retained for separately assigned delivery. Other sessions/checkouts and source pr-1 protected.
 
 WORK-06 resources released successfully: wK1/session closed, clean standalone worktree removed with Git from retained owner checkout, exact private launch directory removed. Branch/reports retained. No cleanup blockers. WORK-07 destination will be the commit recording this event; assignment names resolved SHA before dispatch. Deliver reviewed abb2f11 and evidence ed5ab05 locally, then preserve delivery report/assignment on target; Coordinator alone records completion and cleans final Implementer.
+
+WORK-07 delivery observed reports/github-delivery.md created at 3e117c4aab15787d5f5a1e608b1041eca78a406f, preserved on retained target by evidence-only merge 831c15c1ee81a23a944df05596a83d4431311639. Product delivery merge 9951c826f4c8b4a9526d86bbfb9dfe0b36f2ae7a (parents b9535b6 and accepted evidence ed5ab05), reviewed abb2f11, tested/accepted product e2ee0f4. Worker confirms frozen clean destination, no conflicts or code changes, exact non-coordination equivalence, reuse of accepted verification, neutral identity/no trailers, unchanged Coordinator record and no remote actions. Handoff mechanically validated with --repo. Both worktrees clean; no push/publication/install. Disposition: corrected feature locally delivered, named local authorization consumed for this scope. Handled identity 3e117c4:docs/coordination/install-update/reports/github-delivery.md.
+
+Phase final cleanup. WORK-05/WORK-07 reuse ends; committed branch/report reachable from retained target. Coordinator will close wJZ task session/workspace, remove clean standalone <repo>/.worktrees/lucifer-gh-impl and exact private launch temp <temporary-root>/ruach-herdr-bRi77L. Retain branch/evidence, caller/owner checkout, source pr-1 and unrelated resources. Live GitHub script and first release remain unpublished under original no-push/publication boundary.
+
+
+Final revised-task cleanup confirmed: wJZ/session closed, clean implementation worktree and exact private launch directory removed. WORK-06 resources were already released. All corrected-feature specialist work committed/reachable and resources released, no cleanup blockers. Earlier local archive-first delivery remains preserved as history; normal install/update now uses GitHub Releases per DEC-005. Live publication remains pending an explicit owner decision; no push/tag/release/remote workflow has run.
