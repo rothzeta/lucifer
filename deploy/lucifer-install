@@ -221,7 +221,6 @@ init_config() {
   local rel="$1"
   if [ ! -e "$ENV_FILE" ]; then
     install -m 0640 "$rel/config/lucifer.env.example" "$ENV_FILE"
-    CONFIG_CREATED=1
   fi
   chmod 0640 "$ENV_FILE"; own "root:$SERVICE_USER" "$ENV_FILE"
   if [ ! -e "$CATALOGUE" ]; then
@@ -238,6 +237,14 @@ init_config() {
 clear_interrupted() {
   local m n
   rm -rf "${RELEASES:?}"/.stage.* 2>/dev/null || true
+  # A transaction directory left by a killed run holds the unit and tmpfiles
+  # copies from before that run: keep them under backups/ instead of deleting.
+  for m in "$OPT"/.txn.*; do
+    [ -d "$m" ] || continue
+    mkdir -p "$BACKUPS" && chmod 0700 "$BACKUPS"
+    mv "$m" "$BACKUPS/interrupted-${m##*/.txn.}" 2>/dev/null || true
+    warn "kept the saved files of an interrupted run in $BACKUPS/interrupted-${m##*/.txn.}"
+  done
   for m in "$RELEASES"/.pending-*; do
     [ -e "$m" ] || continue
     n="${m##*/.pending-}"
@@ -287,7 +294,7 @@ check_config_as_service() {
 # -- transactional activation -----------------------------------------------------
 
 txn=""; txn_open=0
-prev_target="" prev_previous="" was_active=0 had_unit=0 had_tmpfiles=0 had_sbin=0 had_previous=0
+prev_target="" prev_previous="" was_active=0 was_enabled=0 txn_enabled=0 txn_started=0 had_unit=0 had_tmpfiles=0 had_sbin=0 had_previous=0
 
 txn_begin() {
   txn="$(mktemp -d "$OPT/.txn.XXXXXX")"
@@ -298,6 +305,8 @@ txn_begin() {
   if [ -f "$TMPFILES" ]; then had_tmpfiles=1; cp -p "$TMPFILES" "$txn/tmpfiles"; fi
   if [ -L "$SBIN_LINK" ] || [ -e "$SBIN_LINK" ]; then had_sbin=1; fi
   if svc_active; then was_active=1; else was_active=0; fi
+  if svc_enabled; then was_enabled=1; else was_enabled=0; fi
+  txn_enabled=0 txn_started=0
   txn_open=1
 }
 
@@ -311,10 +320,24 @@ txn_restore() {
   [ "$txn_open" = 1 ] || return 0
   txn_open=0
   warn "restoring the previous installation"
+  # Undo only what this transaction did to the service, while the unit file
+  # still exists: stop work it started, then remove an enable it added.
+  if [ "$txn_started" = 1 ] && [ "$was_active" = 0 ]; then
+    systemctl stop lucifer || true
+    systemctl reset-failed lucifer 2>/dev/null || true
+  fi
+  if [ "$txn_enabled" = 1 ] && [ "$was_enabled" = 0 ]; then
+    systemctl disable lucifer || warn "could not disable lucifer again; check: systemctl is-enabled lucifer"
+  fi
   if [ -n "$prev_target" ]; then atomic_link "$CURRENT" "$prev_target" || true; else rm -f "$CURRENT"; fi
   if [ "$had_previous" = 1 ]; then atomic_link "$PREVIOUS" "$prev_previous" || true; else rm -f "$PREVIOUS"; fi
   if [ "$had_unit" = 1 ]; then cp -p "$txn/unit" "$UNIT" || true; else rm -f "$UNIT"; fi
-  if [ "$had_tmpfiles" = 1 ]; then cp -p "$txn/tmpfiles" "$TMPFILES" || true; else rm -f "$TMPFILES"; fi
+  if [ "$had_tmpfiles" = 1 ]; then
+    cp -p "$txn/tmpfiles" "$TMPFILES" || true
+    systemd-tmpfiles --create "$TMPFILES" || true
+  else
+    rm -f "$TMPFILES"
+  fi
   [ "$had_sbin" = 1 ] || rm -f "$SBIN_LINK"
   systemctl daemon-reload || true
   if [ "$was_active" = 1 ]; then
@@ -338,7 +361,7 @@ guard_manual_files() {
     cmp -s "$dst" "$new_rel/$f" && continue
     if [ -n "$cur" ] && cmp -s "$dst" "$cur/$f"; then continue; fi
     if [ "$adopt" != 1 ]; then
-      die 3 "$dst differs from any packaged copy (edited by hand or installed manually); re-run with --adopt to replace it (a backup is kept in $BACKUPS)"
+      die 3 "$dst differs from any packaged copy (edited by hand, installed manually, or left by a killed run: see INSTALL.md, After a crash); re-run with --adopt to replace it (a backup is kept in $BACKUPS)"
     fi
     mkdir -p "$BACKUPS" && chmod 0700 "$BACKUPS"
     cp -p "$dst" "$BACKUPS/$(basename "$dst").$(date -u +%Y%m%dT%H%M%SZ)"
@@ -355,14 +378,18 @@ activate_steps() {
   systemd-tmpfiles --create "$TMPFILES" || return 1
   systemctl daemon-reload || return 1
   atomic_link "$CURRENT" "releases/$name" || return 1
+  # The release is complete and live from here: a later kill must not let the
+  # interrupted-run cleanup treat it as a leftover.
+  [ -z "$pending" ] || rm -f "$pending"
   if [ -n "$prev_target" ] && [ "$(basename "$prev_target")" != "$name" ]; then
     atomic_link "$PREVIOUS" "$prev_target" || return 1
   fi
   if { [ "$mode" != install ] || [ "$start_new" = 1 ]; } && ! placeholder_config; then
     check_config_as_service "$CURRENT" || return 1
   fi
-  if [ "$start_new" = 1 ]; then systemctl enable lucifer || return 1; fi
+  if [ "$start_new" = 1 ]; then txn_enabled=1; systemctl enable lucifer || return 1; fi
   if [ "$was_active" = 1 ] || [ "$start_new" = 1 ]; then
+    txn_started=1
     systemctl start lucifer || return 1
     sleep "$SETTLE"
     svc_active || return 1
@@ -433,7 +460,7 @@ cmd_install() {
   init_config "$RELEASES/$top"
   if ! activate "$top" install "$start"; then
     discard_new_release
-    die 1 "installation failed; the host was restored (no enable or start follows a failed check)"
+    die 1 "installation failed; the host was restored (service enable and start undone, nothing left enabled)"
   fi
   commit_new_release
   say "installed release $version ($rid) at $RELEASES/$top"
@@ -453,8 +480,9 @@ cmd_update() {
   parse_install_args "$@"
   validate_archive "$archive" "$checksum" "$target_rid"
   require_root
-  take_lock
   [ -L "$CURRENT" ] || die 3 "no managed installation at $CURRENT (a missing link needs 'install'; a manual directory must be moved aside)"
+  take_lock
+  [ -L "$CURRENT" ] || die 3 "no managed installation at $CURRENT (it disappeared while waiting for the lock)"
   [ -d "$CURRENT/" ] || die 3 "$CURRENT does not point to a release directory"
   [ "$(release_name "$CURRENT")" != "$top" ] || die 3 "release $top is already the current one"
   guard_manual_files "$pkg/$top" "$adopt"
@@ -484,8 +512,9 @@ cmd_rollback() {
     esac
   done
   require_root
-  take_lock
   [ -L "$CURRENT" ] || die 3 "no managed installation at $CURRENT"
+  take_lock
+  [ -L "$CURRENT" ] || die 3 "no managed installation at $CURRENT (it disappeared while waiting for the lock)"
   if [ -z "$target" ]; then
     [ -L "$PREVIOUS" ] || die 3 "no previous release recorded; name one (see: lucifer-install list)"
     target="$(release_name "$PREVIOUS")"

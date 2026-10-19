@@ -33,7 +33,12 @@ case "$1" in
   is-enabled) [ -e "$STUB_STATE/enabled" ];;
   stop) rm -f "$STUB_STATE/active";;
   enable) : > "$STUB_STATE/enabled";;
-  start) [ "$cur" = "${STUB_FAIL_START_FOR:-}" ] && exit 1; : > "$STUB_STATE/active";;
+  disable) rm -f "$STUB_STATE/enabled";;
+  reset-failed) :;;
+  start) [ -e "$STUB_STATE/hang-start-armed" ] && { rm -f "$STUB_STATE/hang-start-armed"; echo $$ > "$STUB_STATE/hang-pid"; exec sleep 30; }
+         [ "$cur" = "${STUB_FAIL_START_FOR:-}" ] && exit 1
+         [ "$cur" = "${STUB_NOACTIVE_FOR:-}" ] && exit 0
+         : > "$STUB_STATE/active";;
   daemon-reload) [ -e "$STUB_STATE/hang-armed" ] && { rm -f "$STUB_STATE/hang-armed"; echo $$ > "$STUB_STATE/hang-pid"; exec sleep 30; }
                  [ -n "${STUB_FAIL_RELOAD:-}" ] && [ -e "$STUB_STATE/reload-armed" ] && { rm -f "$STUB_STATE/reload-armed"; exit 1; }; exit 0;;
 esac'
@@ -80,7 +85,7 @@ mkpkg badstart-1 linux-arm64
 fresh() { # new isolated host
   R="$tmp/host.$RANDOM$RANDOM"; S="$R.state"; mkdir -p "$R" "$S"
   export LUCIFER_INSTALL_ROOT="$R" STUB_STATE="$S"
-  unset STUB_FAIL_START_FOR STUB_FAIL_RELOAD STUB_UID STUB_ARCH STUB_SWAP_TARGET STUB_SWAP_FROM
+  unset STUB_NOACTIVE_FOR STUB_FAIL_START_FOR STUB_FAIL_RELOAD STUB_UID STUB_ARCH STUB_SWAP_TARGET STUB_SWAP_FROM
   : > "$S/calls"; : > "$S/owners"
 }
 run() { out="$("$installer" "$@" 2>&1)"; rc=$?; [ -z "${DBG:-}" ] || echo "[$rc] $out" >&2; }
@@ -434,5 +439,87 @@ check "F4 swapped-in content never installed" [ ! -e "$(OPT)/current/EVIL" ]
 check "F4 verified content installed" [ -x "$(OPT)/current/bin/lucifer-install" ]
 tmpdir_clean "F4 success"
 ok "F4 package handling"
+
+
+# ============ review fixes v3 (B1, O2, O3, N1, N2) ============
+killhang() { # pid-of-installer: kill -9 installer and its hanging stub
+  kill -KILL "$1" 2>/dev/null; kill -KILL "$(cat "$STUB_STATE/hang-pid")" 2>/dev/null; wait "$1" 2>/dev/null; return 0
+}
+waithang() { for _ in $(seq 1 100); do [ -e "$STUB_STATE/hang-pid" ] && return 0; sleep 0.1; done; return 1; }
+
+# B1: failed install --start restores enable and active state
+b1_case() { # label initial-enabled(0|1) failure-env
+  fresh; mkdir -p "$R/etc/lucifer"; setcfg
+  [ "$2" = 1 ] && : > "$STUB_STATE/enabled"
+  env "$3" "$installer" install --start "$(pkgpath badstart-1 linux-arm64)" >"$tmp/b1.out" 2>&1; rc=$?
+  out="$(cat "$tmp/b1.out")"
+  check "B1 $1: exit 1" [ $rc = 1 ]
+  check "B1 $1: not active" [ ! -e "$STUB_STATE/active" ]
+  if [ "$2" = 1 ]; then check "B1 $1: stays enabled" [ -e "$STUB_STATE/enabled" ]
+  else check "B1 $1: not enabled" [ ! -e "$STUB_STATE/enabled" ]; fi
+  check "B1 $1: stopped what it started" grep -q '^systemctl stop' "$STUB_STATE/calls"
+  if [ "$2" = 1 ]; then check "B1 $1: no disable of a prior enable" bash -c '! grep -q "systemctl disable" "$1"' _ "$STUB_STATE/calls"
+  else check "B1 $1: disable issued" grep -q '^systemctl disable' "$STUB_STATE/calls"; fi
+  check "B1 $1: undo happens before the final daemon-reload" bash -c '
+    d="$(grep -n "^systemctl disable\|^systemctl stop" "$1" | tail -1 | cut -d: -f1)"; r="$(grep -n "^systemctl daemon-reload" "$1" | tail -1 | cut -d: -f1)"; [ "$d" -lt "$r" ]' _ "$STUB_STATE/calls"
+  check "B1 $1: unit, current and release gone" bash -c '[ ! -e "$1/etc/systemd/system/lucifer.service" ] && [ ! -e "$1/opt/lucifer/current" ] && [ ! -e "$1/opt/lucifer/releases/lucifer-badstart-1-linux-arm64" ]' _ "$R"
+  check "B1 $1: secret not printed" bash -c '! grep -q SECRETPW <<<"$1"' _ "$out"
+  # following default install with the placeholder configuration
+  printf 'NAVIDROME_PASSWORD=change-me\n' > "$R/etc/lucifer/lucifer.env"
+  : > "$STUB_STATE/calls"
+  run install "$p"; check "B1 $1: later plain install ok" [ $rc = 0 ]
+  check "B1 $1: later install does not start" [ ! -e "$STUB_STATE/active" ]
+  if [ "$2" = 1 ]; then check "B1 $1: prior enable still in place" [ -e "$STUB_STATE/enabled" ]
+  else check "B1 $1: later install leaves it disabled" [ ! -e "$STUB_STATE/enabled" ]
+       check "B1 $1: later install did not enable" bash -c '! grep -q "systemctl enable" "$1"' _ "$STUB_STATE/calls"; fi
+}
+b1_case "start fails, was disabled" 0 STUB_FAIL_START_FOR=lucifer-badstart-1-linux-arm64
+b1_case "start fails, was enabled" 1 STUB_FAIL_START_FOR=lucifer-badstart-1-linux-arm64
+b1_case "settle fails, was disabled" 0 STUB_NOACTIVE_FOR=lucifer-badstart-1-linux-arm64
+b1_case "settle fails, was enabled" 1 STUB_NOACTIVE_FOR=lucifer-badstart-1-linux-arm64
+ok "B1 service state after failed install --start"
+
+# O2: a kill after the switch must not make the release look like a leftover
+mkpkg 1.3.0 linux-arm64
+new_install; run update "$(pkgpath 1.1.0 linux-arm64)" >/dev/null
+rm -f "$STUB_STATE/hang-pid"; : > "$STUB_STATE/hang-start-armed"
+"$installer" update "$(pkgpath 1.2.0 linux-arm64)" >/dev/null 2>&1 & ipid=$!
+waithang; killhang "$ipid"
+check "O2 killed after the switch: current is 1.2.0" [ "$(cur)" = lucifer-1.2.0-linux-arm64 ]
+check "O2 no marker survives the switch" bash -c '[ -z "$(ls -A "$1"/opt/lucifer/releases | grep "^.pending")" ]' _ "$R"
+run rollback lucifer-1.0.0-linux-arm64; check "O2 manual rollback 1" [ $rc = 0 ]
+run rollback lucifer-1.1.0-linux-arm64; check "O2 manual rollback 2" [ $rc = 0 ]
+run update "$(pkgpath 1.3.0 linux-arm64)"; check "O2 later update ok" [ $rc = 0 ]
+for v in 1.0.0 1.1.0 1.2.0; do check "O2 release $v preserved" [ -x "$(OPT)/releases/lucifer-$v-linux-arm64/bin/lucifer-install" ]; done
+ok "O2 releases preserved after crash and manual rollback"
+
+# O3: practical recovery after a kill before the switch
+new_install; rm -f "$STUB_STATE/hang-pid"; : > "$STUB_STATE/hang-armed"
+"$installer" update "$(pkgpath 1.1.0 linux-arm64)" >/dev/null 2>&1 & ipid=$!
+waithang; killhang "$ipid"
+check "O3 killed: old release still current" [ "$(cur)" = lucifer-1.0.0-linux-arm64 ]
+check "O3 killed: service stopped, new unit in place" bash -c '[ ! -e "$1/active" ] && grep -q "unit from 1.1.0" "$2"' _ "$STUB_STATE" "$R/etc/systemd/system/lucifer.service"
+run update "$(pkgpath 1.2.0 linux-arm64)"; check "O3 other version refused with hint (3)" [ $rc = 3 ]
+check "O3 refusal points at the recovery docs" grep -q 'After a crash' <<<"$out"
+run update "$(pkgpath 1.1.0 linux-arm64)"; check "O3 same-version retry completes" [ $rc = 0 ]
+check "O3 interrupted run's saved files kept" bash -c 'grep -rq "unit from 1.0.0" "$1"/opt/lucifer/backups/interrupted-*/unit' _ "$R"
+check "O3 retry did not restart a stopped service (documented)" [ ! -e "$STUB_STATE/active" ]
+ok "O3 recovery after a kill"
+
+# N1: update, rollback and list on an empty host leave nothing behind
+fresh
+run update "$p"; check "N1 update refused (3)" [ $rc = 3 ]
+run rollback; check "N1 rollback refused (3)" [ $rc = 3 ]
+check "N1 host root still empty" bash -c '[ -z "$(find "$1" -mindepth 1 -print -quit)" ]' _ "$R"
+check "N1 no host commands ran" [ ! -s "$STUB_STATE/calls" ]
+
+# N2: restored tmpfiles snippet is re-applied after a failed update
+new_install
+STUB_FAIL_START_FOR=lucifer-badstart-1-linux-arm64 run update "$(pkgpath badstart-1 linux-arm64)"
+check "N2 failed update exit 1" [ $rc = 1 ]
+check "N2 tmpfiles applied for new, then re-applied for restored copy" bash -c '[ "$(grep -c "^tmpfiles --create" "$1")" = 2 ]' _ "$STUB_STATE/calls"
+check "N2 last tmpfiles run follows the restore" bash -c '
+  t="$(grep -n "^tmpfiles --create" "$1" | tail -1 | cut -d: -f1)"; r="$(grep -n "^systemctl daemon-reload" "$1" | tail -2 | head -1 | cut -d: -f1)"; [ "$t" -gt "$r" ]' _ "$STUB_STATE/calls"
+ok "N1/N2"
 
 if [ "$fails" = 0 ]; then echo "lucifer-install: ok"; else echo "lucifer-install: $fails check(s) failed" >&2; exit 1; fi
