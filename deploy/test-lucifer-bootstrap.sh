@@ -11,8 +11,8 @@ repo_root="$(cd "$here/.." && pwd)"
 installer="$here/lucifer-install"
 bootstrap="$repo_root/install.sh"
 tmp="$(mktemp -d)"
-server_pid=""
-cleanup() { [ -z "$server_pid" ] || kill "$server_pid" 2>/dev/null; rm -rf "$tmp"; }
+server_pids=()
+cleanup() { [ "${#server_pids[@]}" = 0 ] || kill "${server_pids[@]}" 2>/dev/null; rm -rf "$tmp"; }
 trap cleanup EXIT
 fails=0
 fail() { echo "FAIL: $*" >&2; fails=$((fails + 1)); }
@@ -48,12 +48,17 @@ mkdir -p "$tmp/tmpdir"; export TMPDIR="$tmp/tmpdir"
 # -- fake GitHub -------------------------------------------------------------------
 web="$tmp/web"; mkdir -p "$web"
 cat > "$tmp/server.py" <<'PY'
-import http.server, os, socketserver, sys
-web = sys.argv[1]
+import http.server, os, socketserver, ssl, sys
+web, portfile = sys.argv[1], sys.argv[2]
+cert = sys.argv[3] if len(sys.argv) > 3 else None
 class H(http.server.BaseHTTPRequestHandler):
     def log_message(self, *a): pass
     def do_GET(self):
         p = os.path.join(web, self.path.split("?")[0].lstrip("/"))
+        with open(portfile + ".log", "a") as f: f.write(self.path + "\n")
+        if os.path.exists(p + ".redirect"):
+            self.send_response(302); self.send_header("Location", open(p + ".redirect").read().strip())
+            self.send_header("Content-Length", "0"); self.end_headers(); return
         if os.path.exists(p + ".status"):
             self.send_response(int(open(p + ".status").read())); self.send_header("Content-Length", "0"); self.end_headers(); return
         if not os.path.isfile(p):
@@ -64,12 +69,19 @@ class H(http.server.BaseHTTPRequestHandler):
         self.wfile.flush()
         self.close_connection = True
 s = socketserver.TCPServer(("127.0.0.1", 0), H)
-open(os.path.join(web, "..", "port"), "w").write(str(s.server_address[1]))
+if cert:
+    c = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER); c.load_cert_chain(cert)
+    s.socket = c.wrap_socket(s.socket, server_side=True)
+open(portfile, "w").write(str(s.server_address[1]))
 s.serve_forever()
 PY
-python3 -I "$tmp/server.py" "$web" & server_pid=$!
-for _ in $(seq 100); do [ -s "$tmp/port" ] && break; sleep 0.1; done
-port="$(cat "$tmp/port")"
+start_server() { # name webroot [cert]: writes $tmp/<name>.port
+  python3 -I "$tmp/server.py" "$2" "$tmp/$1.port" ${3:+"$3"} & server_pids+=($!)
+  local _; for _ in $(seq 100); do [ -s "$tmp/$1.port" ] && return 0; sleep 0.1; done
+  echo "server $1 did not start" >&2; exit 1
+}
+start_server plain "$web"
+port="$(cat "$tmp/plain.port")"
 export LUCIFER_REPO=test/lucifer LUCIFER_GITHUB_API="http://127.0.0.1:$port/api" LUCIFER_GITHUB_DOWNLOAD="http://127.0.0.1:$port" LUCIFER_INSTALL_TEST_INSECURE=1
 apiroot="$web/api/repos/test/lucifer/releases"; dlroot="$web/test/lucifer/releases"
 
@@ -288,10 +300,84 @@ check "workflow does not build from a floating ref" grep -q 'refs/tags/' "$wf"
 # Names: publish.sh output == installer download expectation == bootstrap asset
 check "publish.sh archive name template" grep -q 'name="lucifer-$version-$rid"' "$here/publish.sh"
 check "installer expects lucifer-<tag>-<rid>.tar.gz" grep -q 'name="lucifer-$tag-$rid.tar.gz"' "$installer"
-check "bootstrap fetches lucifer-install(+.sha256)" bash -c 'grep -q "^get lucifer-install$" "$1" && grep -q "^get lucifer-install.sha256$" "$1"' _ "$bootstrap"
+check "bootstrap fetches lucifer-install(+.sha256)" bash -c 'grep -q "^ *get lucifer-install$" "$1" && grep -q "^ *get lucifer-install.sha256$" "$1"' _ "$bootstrap"
 check "workflow installer asset is the packaged script" grep -q 'cp deploy/lucifer-install dist/lucifer-install' "$wf"
 check "publish.sh packages the same script" grep -q 'cp deploy/lucifer-install "$stage/bin/lucifer-install"' "$here/publish.sh"
 ok "workflow contract (static; the workflow itself has not been run)"
+
+
+# ============ 6. a truncated pipe never runs with options dropped (B1) =========
+reset_web; mkrelease v1.0.0 linux-arm64; mkrelease v1.1.0 --latest linux-arm64
+size="$(stat -c %s "$bootstrap")"
+plainlog="$tmp/plain.port.log"; : > "$plainlog"
+cuts=()
+for ((c = 0; c < size - 1; c += 5)); do cuts+=("$c"); done
+for ((c = size - 160; c < size - 1; c++)); do cuts+=("$c"); done            # around the final invocation
+while IFS= read -r c; do cuts+=("$c"); done < <(head -c "$size" "$bootstrap" | awk '{n += length($0) + 1; print n}')   # every line boundary
+last_start="$(( size - $(tail -n 1 "$bootstrap" | wc -c) ))"
+bad=0; badrc=0; n=0
+for c in "${cuts[@]}"; do
+  [ "$c" -ge 0 ] && [ "$c" -lt $((size - 1)) ] || continue
+  n=$((n + 1)); fresh
+  out="$(head -c "$c" "$bootstrap" | bash -s -- --version v1.0.0 --target-rid linux-arm64 2>&1)"; rc=$?
+  { [ ! -e "$R/opt" ] && [ ! -e "$R/etc" ] && [ ! -e "$R/var" ] && [ ! -s "$STUB_STATE/calls" ] && [ -z "$(ls -A "$TMPDIR")" ]; } || { bad=$((bad + 1)); echo "  cut at $c changed the host" >&2; }
+  if [ "$c" -gt "$last_start" ] && [ "$rc" = 0 ]; then badrc=$((badrc + 1)); echo "  cut inside the final invocation (at $c) exited 0" >&2; fi
+done
+check "no truncation of the piped script ($n cut points) touched the host" [ "$bad" = 0 ]
+check "no cut inside the final invocation reports success" [ "$badrc" = 0 ]
+check "no truncated script contacted the network" [ ! -s "$plainlog" ]
+fresh; out="$(head -c "$((size - 1))" "$bootstrap" | bash -s -- --version v1.0.0 2>&1)"; rc=$?
+check "complete script (only the final newline missing) with options installs the requested tag" bash -c '[ "$1" = 0 ] && [ "$(basename "$(readlink "$2/opt/lucifer/current")")" = lucifer-v1.0.0-linux-arm64 ]' _ "$rc" "$R"
+fresh; piped --version v1.0.0; check "complete stdin run keeps the requested version" [ "$(cur)" = lucifer-v1.0.0-linux-arm64 ]
+piped --help; check "complete stdin --help still works" [ $rc = 0 ]
+ok "truncated pipes ($n cut points)"
+
+# ============ 7. HTTPS-only across redirects (B2) ===============================
+openssl req -x509 -newkey rsa:2048 -nodes -keyout "$tmp/tls.pem" -out "$tmp/tls.crt" -days 2 -subj /CN=localhost \
+  -addext subjectAltName=DNS:localhost,IP:127.0.0.1 >/dev/null 2>&1 && cat "$tmp/tls.crt" >> "$tmp/tls.pem" || fail "could not create the test certificate"
+export CURL_CA_BUNDLE="$tmp/tls.crt"
+start_server tlsok "$web" "$tmp/tls.pem"          # real content over TLS
+mkdir -p "$tmp/tlsweb"; start_server tlsredir "$tmp/tlsweb" "$tmp/tls.pem"   # only redirects
+okport="$(cat "$tmp/tlsok.port")"; redirport="$(cat "$tmp/tlsredir.port")"
+redirect_all() { # target base URL: every release file redirects there
+  rm -rf "$tmp/tlsweb"; mkdir -p "$tmp/tlsweb"
+  local f rel
+  while IFS= read -r f; do
+    rel="${f#"$web"/}"; mkdir -p "$tmp/tlsweb/$(dirname "$rel")"; echo "$1/$rel" > "$tmp/tlsweb/$rel.redirect"
+  done < <(find "$web" -type f ! -name '*.status' ! -name '*.truncate')
+}
+reset_web; mkrelease v1.1.0 --latest linux-arm64
+tlsok_api="https://localhost:$okport/api"; tlsok_dl="https://localhost:$okport"; redir_dl="https://localhost:$redirport"
+prod() { LUCIFER_INSTALL_TEST_INSECURE= "$@"; }
+no_plain_requests() { [ ! -s "$plainlog" ]; }
+
+# valid HTTPS (direct, and HTTPS -> HTTPS redirects) still installs
+fresh; LUCIFER_INSTALL_TEST_INSECURE= LUCIFER_GITHUB_API="$tlsok_api" LUCIFER_GITHUB_DOWNLOAD="$tlsok_dl" piped
+check "production HTTPS install exit 0" [ $rc = 0 ]; check "production HTTPS install activated" [ "$(cur)" = lucifer-v1.1.0-linux-arm64 ]
+redirect_all "$tlsok_dl"
+fresh; LUCIFER_INSTALL_TEST_INSECURE= LUCIFER_GITHUB_API="$tlsok_api" LUCIFER_GITHUB_DOWNLOAD="$redir_dl" piped
+check "HTTPS->HTTPS redirects followed (exit 0)" [ $rc = 0 ]; check "HTTPS->HTTPS redirect install activated" [ "$(cur)" = lucifer-v1.1.0-linux-arm64 ]
+
+# redirect to plain http is refused by both entry points before any host change
+: > "$plainlog"
+redirect_all "http://127.0.0.1:$port"
+fresh; LUCIFER_INSTALL_TEST_INSECURE= LUCIFER_GITHUB_API="$tlsok_api" LUCIFER_GITHUB_DOWNLOAD="$redir_dl" piped
+check "bootstrap: TLS->HTTP redirect refused (exit 1)" [ $rc = 1 ]; no_host_effects "bootstrap downgrade"
+check "bootstrap: the http target was never requested" no_plain_requests
+check "bootstrap: no temp left" bash -c '[ -z "$(ls -A "$1")" ]' _ "$TMPDIR"
+# backend: API metadata redirected to http
+fresh; LUCIFER_INSTALL_TEST_INSECURE= LUCIFER_GITHUB_API="https://localhost:$redirport/api" LUCIFER_GITHUB_DOWNLOAD="$tlsok_dl" run "$installer" install
+check "backend: API TLS->HTTP redirect refused (exit 1)" [ $rc = 1 ]; no_host_effects "backend api downgrade"
+check "backend: API http target never requested" no_plain_requests
+# backend: archive download redirected to http (metadata over valid HTTPS)
+rm -rf "$tmp/tlsweb"; mkdir -p "$tmp/tlsweb/test/lucifer/releases/download/v1.1.0"
+echo "http://127.0.0.1:$port/test/lucifer/releases/download/v1.1.0/lucifer-v1.1.0-linux-arm64.tar.gz" > "$tmp/tlsweb/test/lucifer/releases/download/v1.1.0/lucifer-v1.1.0-linux-arm64.tar.gz.redirect"
+fresh; LUCIFER_INSTALL_TEST_INSECURE= LUCIFER_GITHUB_API="$tlsok_api" LUCIFER_GITHUB_DOWNLOAD="$redir_dl" run "$installer" install
+check "backend: archive TLS->HTTP redirect refused (exit 1)" [ $rc = 1 ]; no_host_effects "backend archive downgrade"
+check "backend: archive http target never requested" no_plain_requests
+# the explicit test hook still permits http end to end (existing suites rely on it)
+fresh; piped; check "test hook still allows the plain-http fixture" [ $rc = 0 ]
+ok "HTTPS-only across redirects"
 
 [ "$fails" = 0 ] && { echo "lucifer-bootstrap: ok"; exit 0; }
 echo "lucifer-bootstrap: $fails check(s) failed" >&2; exit 1

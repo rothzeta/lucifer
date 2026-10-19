@@ -13,7 +13,9 @@
 # or the release tagged TAG (--version). The archive for this host's userland RID
 # (derived from `dpkg --print-architecture`) and its .sha256 are fetched into a
 # private temporary directory and then go through exactly the same validation and
-# transaction as a local archive. Nothing is built locally. update does nothing
+# transaction as a local archive. Every URL and redirect must be HTTPS. sudo drops
+# environment variables: use `sudo env LUCIFER_REPO=owner/name lucifer-install update`
+# for another repository. Nothing is built locally. update does nothing
 # when that release is already current.
 #
 # With ARCHIVE (offline mode) nothing is downloaded: ARCHIVE is
@@ -55,7 +57,8 @@
 # the shell and never printed.
 #
 # Test hooks: LUCIFER_GITHUB_API and LUCIFER_GITHUB_DOWNLOAD replace the GitHub
-# endpoints and are accepted over plain http only with LUCIFER_INSTALL_TEST_INSECURE=1.
+# endpoints and, like any redirect, are accepted over plain http only with
+# LUCIFER_INSTALL_TEST_INSECURE=1.
 # LUCIFER_INSTALL_ROOT prefixes every host path (not for production).
 # LUCIFER_INSTALL_SETTLE_SECONDS (default 3) is the wait before the restarted
 # service must report active.
@@ -195,8 +198,11 @@ check_https() {
 fetch() {
   local url="$1" dest="$2" code
   check_https "$url"
+  # Redirects obey the same rule as the first URL: HTTPS only, unless the test hook is set.
+  local proto='=https'
+  [ "${LUCIFER_INSTALL_TEST_INSECURE:-}" != 1 ] || proto='=https,http'
   command -v curl >/dev/null || die 1 "curl is required to download a release"
-  code="$(curl -sSL --proto '=https,http' --proto-redir '=https,http' --max-time 600 --connect-timeout 20 \
+  code="$(curl -sSL --proto "$proto" --proto-redir "$proto" --max-time 600 --connect-timeout 20 \
           -o "$dest" -w '%{http_code}' "$url" 2>"$dl_dir/curl.err")" || {
     die 1 "download failed ($url): $(head -c 200 "$dl_dir/curl.err" | tr -d '\r\n')"
   }
