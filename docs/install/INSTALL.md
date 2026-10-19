@@ -11,7 +11,32 @@ Target architecture is not chosen here. Determine it on the Pi (LUC-08) and buil
 
 `uname -m` can report a 64-bit kernel on a 32-bit userland, so trust `dpkg --print-architecture`. Compatibility of either package with the Pi is not established until it runs there. Native AOT is not used.
 
-## 1. Build the package (development machine)
+## 0. One-line install from GitHub Releases (recommended)
+
+Prebuilt packages for both userland RIDs are attached to each GitHub Release of the repository (see "Publishing a release" below). Nothing is built or copied by hand. On the Pi:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/rothzeta/lucifer/master/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/rothzeta/lucifer/master/install.sh | sudo bash -s -- --version v1.2.3   # a specific release
+curl -fsSL https://raw.githubusercontent.com/rothzeta/lucifer/master/install.sh | sudo bash -s -- --help
+```
+
+`install.sh` is self-contained (it works on stdin). It downloads the release's `lucifer-install` and `lucifer-install.sha256` over HTTPS into a private temporary directory, checks the checksum, and runs `lucifer-install install`, which resolves the latest stable release (or `--version TAG`; prereleases are never "latest"), picks the archive for this host's userland RID from `dpkg --print-architecture` (not the kernel), downloads it with its `.sha256`, and then validates and installs it with the transaction described in section 3. Options after `--` are `--version TAG`, `--start`, `--adopt`, `--target-rid RID`. `LUCIFER_REPO=owner/name` selects another repository. A missing release or asset, a rate-limit or access error, a failed or truncated download, a checksum or RID mismatch, or an unsafe package stops with a message before the account, directories, unit or service are touched. The checksum detects corruption only; it does not authenticate the publisher, and running a script from the network trusts GitHub and the repository owner. The installer is a bash script that has to run before the archive can be validated, so it is itself fetched from the release and checksum-verified first.
+
+Defaults: the service is neither enabled nor started and the generated `/etc/lucifer/lucifer.env` holds the placeholder password, so there is no restart loop; edit it and follow the printed next steps (section 3).
+
+Later updates need no archive and no new command:
+
+```sh
+sudo lucifer-install update                  # latest stable release
+sudo lucifer-install update --version v1.3.0
+sudo lucifer-install list
+sudo lucifer-install rollback                # previous release
+```
+
+`update` does nothing when the selected release is already current. Offline use is unchanged: pass a local archive (sections 1 and 8).
+
+## 1. Build the package manually (development machine, offline use)
 
 Needs the .NET 10 SDK and network or a populated NuGet cache for the runtime pack.
 
@@ -23,6 +48,10 @@ Output in `dist/`: `lucifer-<version>-<rid>.tar.gz` and `lucifer-<version>-<rid>
 
 Copy both files to the Pi (for example with `scp`).
 
+## Publishing a release (maintainer)
+
+A source-only repository cannot satisfy `install.sh`: it needs a published release. Pushing a tag `v<version>` (for example `v1.0.0`) runs `.github/workflows/release.yml`, which tests, builds both RIDs with `deploy/publish.sh --version <tag>` and attaches `lucifer-<tag>-linux-arm64.tar.gz`, `lucifer-<tag>-linux-arm.tar.gz`, their `.sha256` files, `lucifer-install` and `lucifer-install.sha256`. These names are what the downloader expects; a tag containing `-` is a prerelease. The workflow can also be started manually for an existing tag. `install.sh` must also be on the default branch of the repository to be fetchable from `raw.githubusercontent.com`.
+
 ## 2. Prerequisites on the Pi (UNVERIFIED-ON-DEVICE)
 
 - `mpv` installed and on the service's `PATH` (or set `LUCIFER_MPV_PATH`).
@@ -32,7 +61,7 @@ Copy both files to the Pi (for example with `scp`).
 
 ## 3. First install (UNVERIFIED-ON-DEVICE)
 
-The package carries `bin/lucifer-install`. Unpack it once to run the installer, or run it from a checkout (`deploy/lucifer-install`). It needs root, the archive, and the `.sha256` file beside it. Nothing is downloaded.
+The package carries `bin/lucifer-install`. Unpack it once to run the installer, or run it from a checkout (`deploy/lucifer-install`). With an archive argument (offline mode) it needs root, the archive, and the `.sha256` file beside it, and nothing is downloaded; without one it downloads the release as in section 0.
 
 ```sh
 sudo deploy/lucifer-install install lucifer-1.0.0-linux-arm64.tar.gz
@@ -132,7 +161,9 @@ If the service is running, the maintenance run is refused with an error naming t
 ## 8. Update and roll back (UNVERIFIED-ON-DEVICE)
 
 ```sh
-sudo lucifer-install update lucifer-1.1.0-linux-arm64.tar.gz     # checksum file beside it
+sudo lucifer-install update                                      # download the latest stable release
+sudo lucifer-install update --version v1.1.0                     # or a named release
+sudo lucifer-install update lucifer-1.1.0-linux-arm64.tar.gz     # offline: local archive, checksum file beside it
 sudo lucifer-install list                                        # releases, current marked *
 sudo lucifer-install rollback                                    # previous release
 sudo lucifer-install rollback lucifer-1.0.0-linux-arm64          # or a named one from list

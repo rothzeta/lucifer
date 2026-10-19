@@ -1,15 +1,26 @@
 #!/usr/bin/env bash
-# Install, update and roll back Lucifer from a local release archive.
+# Install, update and roll back Lucifer from GitHub Releases or a local archive.
 #
+#   sudo lucifer-install install  [--start] [--adopt] [--version TAG] [--target-rid RID]
+#   sudo lucifer-install update   [--adopt] [--version TAG] [--target-rid RID]
 #   sudo lucifer-install install  [--start] [--adopt] [--checksum FILE] [--target-rid RID] ARCHIVE
 #   sudo lucifer-install update   [--adopt] [--checksum FILE] [--target-rid RID] ARCHIVE
 #   sudo lucifer-install rollback [--adopt] [RELEASE]
 #   lucifer-install list
 #
-# ARCHIVE is lucifer-<version>-<rid>.tar.gz from deploy/publish.sh; its
-# SHA-256 file ARCHIVE.sha256 is expected next to it (--checksum names another).
+# Without ARCHIVE the prebuilt release is downloaded over HTTPS from the GitHub
+# repository $LUCIFER_REPO (default rothzeta/lucifer): the latest stable release,
+# or the release tagged TAG (--version). The archive for this host's userland RID
+# (derived from `dpkg --print-architecture`) and its .sha256 are fetched into a
+# private temporary directory and then go through exactly the same validation and
+# transaction as a local archive. Nothing is built locally. update does nothing
+# when that release is already current.
+#
+# With ARCHIVE (offline mode) nothing is downloaded: ARCHIVE is
+# lucifer-<version>-<rid>.tar.gz from deploy/publish.sh; its SHA-256 file
+# ARCHIVE.sha256 is expected next to it (--checksum names another).
 # The checksum detects corruption only: it does not authenticate the publisher.
-# Nothing is downloaded. Run as root (or via sudo).
+# Run as root (or via sudo).
 #
 # install   First installation. Refused when /opt/lucifer/current exists (use
 #           update). Creates the lucifer account and directories, installs the
@@ -43,7 +54,9 @@
 # of the existing installation state. Configuration values are never read into
 # the shell and never printed.
 #
-# Test hook: LUCIFER_INSTALL_ROOT prefixes every host path (not for production).
+# Test hooks: LUCIFER_GITHUB_API and LUCIFER_GITHUB_DOWNLOAD replace the GitHub
+# endpoints and are accepted over plain http only with LUCIFER_INSTALL_TEST_INSECURE=1.
+# LUCIFER_INSTALL_ROOT prefixes every host path (not for production).
 # LUCIFER_INSTALL_SETTLE_SECONDS (default 3) is the wait before the restarted
 # service must report active.
 set -euo pipefail
@@ -65,6 +78,9 @@ UNIT="$ROOT/etc/systemd/system/lucifer.service"
 TMPFILES="$ROOT/etc/tmpfiles.d/lucifer.conf"
 SBIN_LINK="$ROOT/usr/local/sbin/lucifer-install"
 SETTLE="${LUCIFER_INSTALL_SETTLE_SECONDS:-3}"
+REPO="${LUCIFER_REPO:-rothzeta/lucifer}"
+GH_API="${LUCIFER_GITHUB_API:-https://api.github.com}"
+GH_DL="${LUCIFER_GITHUB_DOWNLOAD:-https://github.com}"
 
 usage() { sed -n '2,/^set -euo/{/^set -euo/!p}' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 die() { local code="$1"; shift; echo "lucifer-install: $*" >&2; exit "$code"; }
@@ -73,12 +89,13 @@ warn() { echo "lucifer-install: warning: $*" >&2; }
 
 # -- archive validation (no host effects) ------------------------------------
 
-top="" version="" rid="" stage="" snap="" pkg="" new_release="" pending=""
+dl_dir="" dl_tag="" top="" version="" rid="" stage="" snap="" pkg="" new_release="" pending=""
 
 cleanup() {
   [ -z "$stage" ] || rm -rf "${stage:?}"
   [ -z "$snap" ] || rm -rf "${snap:?}"
-  stage="" snap=""
+  [ -z "$dl_dir" ] || rm -rf "${dl_dir:?}"
+  stage="" snap="" dl_dir=""
 }
 trap cleanup EXIT
 
@@ -153,6 +170,74 @@ validate_archive() {
   [ "$(head -c 200 "$pkg/$top/RID" | tr -d '\n')" = "$rid" ] || die 1 "RID in archive does not match its name"
   [ -x "$pkg/$top/bin/Amp.Nfc" ] && [ -x "$pkg/$top/bin/lucifer-maint" ] && [ -x "$pkg/$top/bin/lucifer-install" ] \
     || die 1 "archive entry points are not executable"
+}
+
+# -- GitHub Releases download (no host effects) -----------------------------------
+
+userland_rid() { # sets target_rid
+  case "$(dpkg --print-architecture 2>/dev/null || true)" in
+    arm64) target_rid=linux-arm64 ;;
+    armhf) target_rid=linux-arm ;;
+    *) die 1 "cannot derive the userland RID from dpkg; pass --target-rid linux-arm64|linux-arm" ;;
+  esac
+}
+
+check_https() {
+  case "$1" in
+    https://*) ;;
+    http://*) [ "${LUCIFER_INSTALL_TEST_INSECURE:-}" = 1 ] || die 2 "refusing a non-HTTPS URL: $1" ;;
+    *) die 2 "refusing a non-HTTPS URL: $1" ;;
+  esac
+}
+
+# fetch URL DEST: HTTP errors, truncation and timeouts are failures; the
+# response is never executed or evaluated here.
+fetch() {
+  local url="$1" dest="$2" code
+  check_https "$url"
+  command -v curl >/dev/null || die 1 "curl is required to download a release"
+  code="$(curl -sSL --proto '=https,http' --proto-redir '=https,http' --max-time 600 --connect-timeout 20 \
+          -o "$dest" -w '%{http_code}' "$url" 2>"$dl_dir/curl.err")" || {
+    die 1 "download failed ($url): $(head -c 200 "$dl_dir/curl.err" | tr -d '\r\n')"
+  }
+  case "$code" in
+    200) ;;
+    404) die 1 "not found (HTTP 404): $url" ;;
+    403|429) die 1 "GitHub refused the request (HTTP $code: rate limit or access denied): $url; wait and retry, or use a local ARCHIVE" ;;
+    *) die 1 "unexpected HTTP status $code: $url" ;;
+  esac
+}
+
+# Resolve TAG ("" = latest stable) and download the archive and checksum for RID
+# into a private directory; sets archive and checksum. Names must match what
+# deploy/publish.sh and the release workflow produce.
+download_release() {
+  local tag="$1" rid="$2" url meta name
+  case "$REPO" in
+    */*) [[ "$REPO" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]] || die 2 "invalid LUCIFER_REPO: $REPO" ;;
+    *) die 2 "invalid LUCIFER_REPO: $REPO" ;;
+  esac
+  dl_dir="$(mktemp -d "${TMPDIR:-/var/tmp}/lucifer-download.XXXXXX")"
+  chmod 0700 "$dl_dir"
+  if [ -z "$tag" ]; then url="$GH_API/repos/$REPO/releases/latest"; else url="$GH_API/repos/$REPO/releases/tags/$tag"; fi
+  fetch "$url" "$dl_dir/release.json"
+  # Parsed as text only (never eval/source). Prerelease and draft releases are
+  # not returned by the "latest" endpoint.
+  meta="$(tr -d '\r' < "$dl_dir/release.json")"
+  if [ -z "$tag" ]; then
+    tag="$(sed -n 's/^ *"tag_name": *"\([^"]*\)".*/\1/p' <<<"$meta" | head -n 1)"
+    [ -n "$tag" ] || die 1 "no stable release found for $REPO"
+  fi
+  [[ "$tag" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*$ ]] || die 1 "unsupported release tag: $tag"
+  name="lucifer-$tag-$rid.tar.gz"
+  for f in "$name" "$name.sha256"; do
+    grep -qF "\"name\": \"$f\"" <<<"$meta" || die 1 "release $tag of $REPO has no asset $f (is it published for $rid?)"
+  done
+  say "downloading release $tag for $rid from $REPO"
+  fetch "$GH_DL/$REPO/releases/download/$tag/$name" "$dl_dir/$name"
+  fetch "$GH_DL/$REPO/releases/download/$tag/$name.sha256" "$dl_dir/$name.sha256"
+  archive="$dl_dir/$name"; checksum="$dl_dir/$name.sha256"
+  dl_tag="$tag"
 }
 
 # -- helpers -------------------------------------------------------------------
@@ -424,11 +509,12 @@ ensure_sbin_link() {
 # -- commands -----------------------------------------------------------------------
 
 parse_install_args() {
-  checksum="" target_rid="" adopt=0 start=0 archive=""
+  checksum="" target_rid="" adopt=0 start=0 archive="" want_version=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --checksum) [ $# -ge 2 ] || die 2 "--checksum needs a value"; checksum="$2"; shift 2 ;;
       --target-rid) [ $# -ge 2 ] || die 2 "--target-rid needs a value"; target_rid="$2"; shift 2 ;;
+      --version) [ $# -ge 2 ] || die 2 "--version needs a value"; want_version="$2"; shift 2 ;;
       --adopt) adopt=1; shift ;;
       --start) [ "$cmd" = install ] || die 2 "--start is only valid for install"; start=1; shift ;;
       -h|--help) usage; exit 0 ;;
@@ -436,11 +522,29 @@ parse_install_args() {
       *) [ -z "$archive" ] || die 2 "only one ARCHIVE is accepted"; archive="$1"; shift ;;
     esac
   done
-  [ -n "$archive" ] || die 2 "$cmd needs an ARCHIVE argument (see --help)"
+  if [ -n "$archive" ]; then
+    [ -z "$want_version" ] || die 2 "--version selects a GitHub release and cannot be combined with ARCHIVE"
+  else
+    [ -z "$checksum" ] || die 2 "--checksum is only valid with ARCHIVE"
+    if [ -n "$want_version" ] && ! [[ "$want_version" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*$ ]]; then
+      die 2 "invalid --version (a release tag such as v1.2.3): $want_version"
+    fi
+  fi
+  case "$target_rid" in ""|linux-arm64|linux-arm) ;; *) die 2 "--target-rid must be linux-arm64 or linux-arm" ;; esac
+}
+
+# Without ARCHIVE: fetch the selected GitHub release (after the root check, so a
+# non-root run fails before downloading). Sets archive and checksum.
+obtain_archive() {
+  [ -z "$archive" ] || return 0
+  require_root
+  [ -n "$target_rid" ] || userland_rid
+  download_release "$want_version" "$target_rid"
 }
 
 cmd_install() {
   parse_install_args "$@"
+  obtain_archive
   validate_archive "$archive" "$checksum" "$target_rid"
   require_root
   if [ "$start" = 1 ] && placeholder_config; then
@@ -478,13 +582,22 @@ cmd_install() {
 
 cmd_update() {
   parse_install_args "$@"
+  if [ -z "$archive" ]; then
+    require_root
+    [ -L "$CURRENT" ] || die 3 "no managed installation at $CURRENT (a missing link needs 'install'; a manual directory must be moved aside)"
+  fi
+  obtain_archive
   validate_archive "$archive" "$checksum" "$target_rid"
   require_root
   [ -L "$CURRENT" ] || die 3 "no managed installation at $CURRENT (a missing link needs 'install'; a manual directory must be moved aside)"
   take_lock
   [ -L "$CURRENT" ] || die 3 "no managed installation at $CURRENT (it disappeared while waiting for the lock)"
   [ -d "$CURRENT/" ] || die 3 "$CURRENT does not point to a release directory"
-  [ "$(release_name "$CURRENT")" != "$top" ] || die 3 "release $top is already the current one"
+  if [ "$(release_name "$CURRENT")" = "$top" ]; then
+    [ -n "$dl_tag" ] || die 3 "release $top is already the current one"
+    say "already up to date: release $top is current"
+    return 0
+  fi
   guard_manual_files "$pkg/$top" "$adopt"
   clear_interrupted
   stage_release
