@@ -1,6 +1,11 @@
 # Install/update task record
 
-## Current completion snapshot
+## Current revision snapshot
+
+Reopened for owner clarification DEC-005, raw source owner-clarification.md. Phase understand/plan. Existing accepted local implementation retained; new work adds GitHub Releases onboarding and convenient release updates. Local target remains ruach/lucifer-install-update; no publication or live install authorized. Prior completed resources remain released. Next: delegate bounded implementation/integration and meaningful isolated verification, then independent review and separate local delivery.
+
+
+## Earlier delivery snapshot (superseded for onboarding by DEC-005)
 
 - Complete: implementation/integration, meaningful independent verification, independent review/re-review, and authorized local delivery.
 - Destination: ruach/lucifer-install-update, owner checkout retained. Delivered merge a64ab733aedecabbd96f800ead09ea23a4c2dca1; evidence commit f1845edcb1692f8b1eaa20e4529411c9646d6fe2. Later Coordinator commit records completion only.
@@ -112,3 +117,13 @@ Phase: final cleanup. WORK-01/WORK-04 worker reuse ends; all commits/reports rea
 
 
 Final cleanup confirmed: closed wJS and removed its clean worker worktree and private launch directory; all three specialist workspaces/sessions released, branches retained. No cleanup blockers. Owner checkout intentionally retained by DEC-004, and caller pane is not closed. Final Coordinator record is evidence-only; product/test content remains the independently accepted revision. Task complete under the authorized local-delivery scope.
+
+## Reopened work: GitHub Releases onboarding
+
+DEC-005 accepted, owner follow-up source [owner-clarification.md](owner-clarification.md), timestamp not provided: "so now i have the code on github be cant just run curl ..../install.sh | bash ..." and answer "releases" to the source-build versus prebuilt-release question. Earlier exact questions are preserved in the raw source. Interpretation: supply a downloadable stdin-capable top-level install.sh using GitHub Releases; no manual archive handling in the normal flow; installed update can select/download a release. This supersedes only the local-archive-first user flow in assignment.md, not safety, preservation, no remote actions or physical evidence limits. Owner explicitly selected releases; no source-build fallback without authority.
+
+Operational plan: WORK-05 Implementer owns top-level installer, release discovery/download integration into existing backend, packaging/release workflow, docs and isolated tests. It must inspect current origin/release state read-only and report missing published assets honestly. Integration and meaningful combined verification assigned to Implementer, with independent Reviewer for WORK-06, then separately assigned local delivery WORK-07. Preferred role routes and auto-review unchanged, no automatic alternatives. Test releases/network in isolation, no live host changes/publication. Existing backend/offline path may remain; automatic downloads are now required. Keep scope bounded to installation/update and release artifacts.
+
+Local-delivery authority scope-check: original owner instruction to deliver reviewed local commits onto ruach/lucifer-install-update continues for the same feature corrected by DEC-005; no new target or remote authority. Require fresh passing checks and independent review before separate delivery assignment. No native dialogs approved by Coordinator; existing recovery/topology lessons apply.
+
+Planned worker lucifer-gh-impl: preferred Implementer route, fresh task worktree/branch, committed prerequisite is this intake commit based on retained delivered HEAD 6b9a962. Coordinator owns this record alone; new assignments and validated reports retained under the same task directory. No ports/profiles/databases needed. Source checkout and unrelated workspaces protected. Two failed fix/review cycles maximum before declared escalation.
