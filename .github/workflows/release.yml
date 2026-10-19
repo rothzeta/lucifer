@@ -1,5 +1,6 @@
 # Publishes a GitHub Release for a version tag (v*) or a manual run naming an
-# existing tag. Assets are exactly what install.sh and `lucifer-install` download:
+# existing tag. Assets are exactly what install.sh and `lucifer update` download
+# (lucifer-install is the private engine install.sh runs, not a user command):
 #   lucifer-<tag>-linux-arm64.tar.gz(+.sha256), lucifer-<tag>-linux-arm.tar.gz(+.sha256),
 #   lucifer-install(+.sha256)
 # A tag containing '-' (for example v1.0.0-rc1) is marked a prerelease, which the
@@ -39,6 +40,7 @@ jobs:
         run: |
           dotnet test
           deploy/test-lucifer-maint.sh
+          deploy/test-lucifer-command.sh
           deploy/test-lucifer-install.sh
           deploy/test-lucifer-bootstrap.sh
       - name: Package both runtime identifiers

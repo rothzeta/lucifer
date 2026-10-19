@@ -51,7 +51,7 @@ mkdir -p "$tmp/tmpdir"; export TMPDIR="$tmp/tmpdir"
 dist="$tmp/dist"; mkdir -p "$dist"
 mkpkg() {
   local v="$1" r="$2" n="lucifer-$1-$2" w; w="$(mktemp -d -p "$tmp")"
-  mkdir -p "$w/$n"/{bin,config,systemd,udev}
+  mkdir -p "$w/$n"/{bin,libexec,config,systemd,udev}
   printf '#!/bin/sh\necho amp\n' > "$w/$n/bin/Amp.Nfc"
   cat > "$w/$n/bin/lucifer-maint" <<'M'
 #!/usr/bin/env bash
@@ -61,14 +61,15 @@ echo "maint $* env=$LUCIFER_ENV_FILE rel=$(basename "$d")" >> "$STUB_STATE/calls
 grep -q "$(printf '\r')" "$LUCIFER_ENV_FILE" 2>/dev/null && { echo "carriage return" >&2; exit 2; }
 exit 0
 M
-  cp "$installer" "$w/$n/bin/lucifer-install"
+  cp "$installer" "$w/$n/libexec/lucifer-install"
+  cp "$here/lucifer" "$w/$n/bin/lucifer"
   printf 'NAVIDROME_URL=https://navidrome.local:4533\nNAVIDROME_USER=lucifer\nNAVIDROME_PASSWORD=change-me\n' > "$w/$n/config/lucifer.env.example"
   echo '{"example":true}' > "$w/$n/config/catalogue.example.json"
   echo '{"keys":[]}' > "$w/$n/config/input-map.example.json"
   printf '[Service]\n# unit from %s\nExecStart=/opt/lucifer/current/bin/Amp.Nfc play\n' "$v" > "$w/$n/systemd/lucifer.service"
   printf '# tmpfiles from %s\nd /run/lucifer 0750 lucifer lucifer -\n' "$v" > "$w/$n/systemd/lucifer.tmpfiles.conf"
   echo "$v" > "$w/$n/VERSION"; echo "$r" > "$w/$n/RID"
-  chmod 0755 "$w/$n/bin/"*
+  chmod 0755 "$w/$n/bin/"* "$w/$n/libexec/"*
   [ -z "${3:-}" ] || eval "$3"
   tar --sort=name --owner=0 --group=0 --numeric-owner -C "$w" -cf - "$n" | gzip -n > "$dist/$n.tar.gz"
   (cd "$dist" && sha256sum "$n.tar.gz" > "$n.tar.gz.sha256")
@@ -102,7 +103,7 @@ no_host_effects() { # $1 label
 # -- syntax, help, arguments ---------------------------------------------------
 bash -n "$installer" && ok "bash -n" || fail "bash -n"
 fresh
-run --help; check "help exit" [ $rc = 0 ]; check "help text" grep -q 'lucifer-install update' <<<"$out"
+run --help; check "help exit" [ $rc = 0 ]; check "help text" grep -q 'lucifer update' <<<"$out"
 run; check "no args exit 2" [ $rc = 2 ]
 run frob; check "unknown command exit 2" [ $rc = 2 ]
 # Owner decision (GitHub Releases): no ARCHIVE means download. Point it at a closed port so no real network is used.
@@ -142,7 +143,7 @@ def add(name, data=b"x", mode=0o755, typ=tarfile.REGTYPE, link=""):
     i.size = len(data) if typ == tarfile.REGTYPE else 0
     t.addfile(i, io.BytesIO(data) if typ == tarfile.REGTYPE else None)
 good = {"VERSION": b"9.9.9\n", "RID": b"linux-arm64\n", "bin/Amp.Nfc": b"x", "bin/lucifer-maint": b"x",
-        "bin/lucifer-install": b"x", "config/lucifer.env.example": b"x", "config/catalogue.example.json": b"x",
+        "bin/lucifer": b"x", "libexec/lucifer-install": b"x", "config/lucifer.env.example": b"x", "config/catalogue.example.json": b"x",
         "systemd/lucifer.service": b"x", "systemd/lucifer.tmpfiles.conf": b"x"}
 if kind != "nomember":
     for k, v in good.items(): add(f"{top}/{k}", v)
@@ -179,7 +180,7 @@ ok "rejections happen before host effects"
 fresh; run install "$p"
 check "first install exit 0" [ $rc = 0 ]
 check "current points at release" [ "$(cur)" = lucifer-1.0.0-linux-arm64 ]
-check "release has entry points" [ -x "$(OPT)/current/bin/lucifer-install" ] 
+check "release has entry points" [ -x "$(OPT)/current/bin/lucifer" ] && [ -x "$(OPT)/current/libexec/lucifer-install" ]
 check "unit installed from release" cmp -s "$R/etc/systemd/system/lucifer.service" "$(OPT)/current/systemd/lucifer.service"
 check "tmpfiles installed" cmp -s "$R/etc/tmpfiles.d/lucifer.conf" "$(OPT)/current/systemd/lucifer.tmpfiles.conf"
 check "env created 0640" [ "$(stat -c %a "$R/etc/lucifer/lucifer.env")" = 640 ]
@@ -189,7 +190,8 @@ check "env group lucifer, root owner" grep -q 'chown root:lucifer .*lucifer.env'
 check "release owned by root" grep -q 'chown -R root:root' "$STUB_STATE/owners"
 check "account created" grep -q '^useradd --system' "$STUB_STATE/calls"
 check "groups added" grep -q 'usermod -aG dialout' "$STUB_STATE/calls"
-check "link in sbin" [ -L "$R/usr/local/sbin/lucifer-install" ]
+check "lucifer command linked" [ "$(readlink "$R/usr/local/bin/lucifer")" = /opt/lucifer/current/bin/lucifer ]
+check "no public lucifer-install link" [ ! -e "$R/usr/local/sbin/lucifer-install" ] && [ ! -L "$R/usr/local/sbin/lucifer-install" ]
 check "service not started" bash -c '! grep -E "systemctl (start|enable)" "$1"' _ "$STUB_STATE/calls"
 check "configuration instructions" grep -q 'NEXT: edit' <<<"$out"
 check "no stage leftovers" bash -c '[ -z "$(ls -A "$1"/opt/lucifer/releases | grep "^\\.")" ]' _ "$R"
@@ -368,7 +370,7 @@ run update "$(pkgpath 1.1.0 linux-arm64)"; check "F2 retry succeeds" [ $rc = 0 ]
 new_install; rel="$(OPT)/releases"
 mkdir -p "$rel/lucifer-1.1.0-linux-arm64/bin" "$rel/.stage.dead"; : > "$rel/.pending-lucifer-1.1.0-linux-arm64"
 run update "$(pkgpath 1.1.0 linux-arm64)"; check "F2 retry after simulated SIGKILL" [ $rc = 0 ]
-check "F2 leftover replaced by the real release" [ -x "$rel/lucifer-1.1.0-linux-arm64/bin/lucifer-install" ]
+check "F2 leftover replaced by the real release" [ -x "$rel/lucifer-1.1.0-linux-arm64/libexec/lucifer-install" ]
 check "F2 stale staging removed" [ ! -e "$rel/.stage.dead" ]
 check "F2 warned about the leftover" grep -q 'interrupted run' <<<"$out"
 # a directory without a marker is never deleted
@@ -414,7 +416,7 @@ top = "lucifer-9.9.7-linux-arm64"
 t = tarfile.open(sys.argv[1], "w:gz")
 def add(n, d=b"x"):
     i = tarfile.TarInfo(n); i.mode = 0o755; i.size = len(d); t.addfile(i, io.BytesIO(d))
-for k, v in {"VERSION": b"9.9.7\n", "RID": b"linux-arm64\n", "bin/Amp.Nfc": b"x", "bin/lucifer-maint": b"x", "bin/lucifer-install": b"x",
+for k, v in {"VERSION": b"9.9.7\n", "RID": b"linux-arm64\n", "bin/Amp.Nfc": b"x", "bin/lucifer-maint": b"x", "bin/lucifer": b"x", "libexec/lucifer-install": b"x",
              "config/lucifer.env.example": b"x", "config/catalogue.example.json": b"x",
              "systemd/lucifer.service": b"x", "systemd/lucifer.tmpfiles.conf": b"x"}.items(): add(f"{top}/{k}", v)
 add(f"{top}/bin/" + "a" * 300)
@@ -437,7 +439,7 @@ run install "$p"; unset STUB_SWAP_TARGET STUB_SWAP_FROM
 cp "$tmp/orig.tar.gz" "$p"; cp "$tmp/orig.tar.gz.sha256" "$p.sha256"
 check "F4 swap-time install exit 0" [ $rc = 0 ]
 check "F4 swapped-in content never installed" [ ! -e "$(OPT)/current/EVIL" ]
-check "F4 verified content installed" [ -x "$(OPT)/current/bin/lucifer-install" ]
+check "F4 verified content installed" [ -x "$(OPT)/current/libexec/lucifer-install" ]
 tmpdir_clean "F4 success"
 ok "F4 package handling"
 
@@ -491,7 +493,7 @@ check "O2 no marker survives the switch" bash -c '[ -z "$(ls -A "$1"/opt/lucifer
 run rollback lucifer-1.0.0-linux-arm64; check "O2 manual rollback 1" [ $rc = 0 ]
 run rollback lucifer-1.1.0-linux-arm64; check "O2 manual rollback 2" [ $rc = 0 ]
 run update "$(pkgpath 1.3.0 linux-arm64)"; check "O2 later update ok" [ $rc = 0 ]
-for v in 1.0.0 1.1.0 1.2.0; do check "O2 release $v preserved" [ -x "$(OPT)/releases/lucifer-$v-linux-arm64/bin/lucifer-install" ]; done
+for v in 1.0.0 1.1.0 1.2.0; do check "O2 release $v preserved" [ -x "$(OPT)/releases/lucifer-$v-linux-arm64/libexec/lucifer-install" ]; done
 ok "O2 releases preserved after crash and manual rollback"
 
 # O3: practical recovery after a kill before the switch
@@ -522,5 +524,37 @@ check "N2 tmpfiles applied for new, then re-applied for restored copy" bash -c '
 check "N2 last tmpfiles run follows the restore" bash -c '
   t="$(grep -n "^tmpfiles --create" "$1" | tail -1 | cut -d: -f1)"; r="$(grep -n "^systemctl daemon-reload" "$1" | tail -2 | head -1 | cut -d: -f1)"; [ "$t" -gt "$r" ]' _ "$STUB_STATE/calls"
 ok "N1/N2"
+
+# L1: the public command across a release switch. A host installed by a release that
+# predates `lucifer` has the retired /usr/local/sbin/lucifer-install link and no bin/lucifer.
+legacy_host() { # a release directory with only the old layout, linked as current
+  fresh; mkdir -p "$R/opt/lucifer/releases/lucifer-0.9.0-linux-arm64/bin" "$R/usr/local/sbin" "$R/usr/local/bin" "$R/etc/systemd/system" "$R/etc/tmpfiles.d" "$R/etc/lucifer" "$R/var/lib/lucifer"
+  mkdir "$R/opt/lucifer/releases/lucifer-0.9.0-linux-arm64/systemd"
+  echo "[Service] legacy" > "$R/opt/lucifer/releases/lucifer-0.9.0-linux-arm64/systemd/lucifer.service"; echo "# legacy" > "$R/opt/lucifer/releases/lucifer-0.9.0-linux-arm64/systemd/lucifer.tmpfiles.conf"
+  : > "$R/opt/lucifer/releases/lucifer-0.9.0-linux-arm64/bin/lucifer-install"; chmod +x "$R/opt/lucifer/releases/lucifer-0.9.0-linux-arm64/bin/lucifer-install"
+  ln -s releases/lucifer-0.9.0-linux-arm64 "$R/opt/lucifer/current"
+  ln -s /opt/lucifer/current/bin/lucifer-install "$R/usr/local/sbin/lucifer-install"
+}
+legacy_host
+run update "$(pkgpath 1.0.0 linux-arm64)"; check "L1 update from the legacy layout exit 0" [ $rc = 0 ]
+check "L1 lucifer linked to current" [ "$(readlink "$R/usr/local/bin/lucifer")" = /opt/lucifer/current/bin/lucifer ]
+check "L1 retired sbin link removed" [ ! -e "$R/usr/local/sbin/lucifer-install" ] && [ ! -L "$R/usr/local/sbin/lucifer-install" ]
+check "L1 lucifer resolves to the new launcher" [ -x "$R/opt/lucifer/current/bin/lucifer" ]
+run rollback; check "L1 rollback to the legacy release exit 0" [ $rc = 0 ]
+check "L1 rollback restores the legacy helper link" [ "$(readlink "$R/usr/local/sbin/lucifer-install")" = /opt/lucifer/current/bin/lucifer-install ]
+check "L1 rollback drops our dangling lucifer link" [ ! -L "$R/usr/local/bin/lucifer" ]
+run update "$(pkgpath 1.1.0 linux-arm64)"; check "L1 update again exit 0" [ $rc = 0 ]
+check "L1 lucifer linked again" [ -L "$R/usr/local/bin/lucifer" ]
+check "L1 old release preserved" [ -d "$(OPT)/releases/lucifer-0.9.0-linux-arm64" ] && [ -d "$(OPT)/releases/lucifer-1.0.0-linux-arm64" ]
+# Files that are not ours are never replaced or removed.
+legacy_host; rm "$R/usr/local/sbin/lucifer-install"; echo mine > "$R/usr/local/sbin/lucifer-install"; echo mine2 > "$R/usr/local/bin/lucifer"
+run update "$(pkgpath 1.0.0 linux-arm64)"; check "L1 update with operator files exit 0" [ $rc = 0 ]
+check "L1 operator sbin file kept" [ "$(cat "$R/usr/local/sbin/lucifer-install")" = mine ]
+check "L1 operator lucifer file kept" [ "$(cat "$R/usr/local/bin/lucifer")" = mine2 ]
+check "L1 warns about the foreign lucifer" grep -q 'not ours' <<<"$out"
+legacy_host; rm "$R/usr/local/sbin/lucifer-install"; ln -s /elsewhere "$R/usr/local/sbin/lucifer-install"
+run update "$(pkgpath 1.0.0 linux-arm64)"; check "L1 update with foreign link exit 0" [ $rc = 0 ]
+check "L1 foreign sbin link kept" [ "$(readlink "$R/usr/local/sbin/lucifer-install")" = /elsewhere ]
+ok "L1 lucifer command across a release switch"
 
 if [ "$fails" = 0 ]; then echo "lucifer-install: ok"; else echo "lucifer-install: $fails check(s) failed" >&2; exit 1; fi

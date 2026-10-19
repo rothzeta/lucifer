@@ -49,7 +49,7 @@ name="lucifer-$version-$rid"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 stage="$work/$name"
-mkdir -p "$stage/bin" "$stage/config" "$stage/systemd" "$stage/udev"
+mkdir -p "$stage/bin" "$stage/libexec" "$stage/config" "$stage/systemd" "$stage/udev"
 
 dotnet publish Amp.Nfc/Amp.Nfc.csproj -c Release -r "$rid" --self-contained true \
   -p:DebugType=None -p:DebugSymbols=false -o "$stage/bin"
@@ -61,9 +61,10 @@ cp deploy/lucifer.service "$stage/systemd/lucifer.service"
 cp deploy/lucifer.tmpfiles.conf "$stage/systemd/lucifer.tmpfiles.conf"
 cp deploy/99-lucifer-nfc.rules.example "$stage/udev/99-lucifer-nfc.rules.example"
 cp deploy/lucifer-maint "$stage/bin/lucifer-maint"
-cp deploy/lucifer-install "$stage/bin/lucifer-install"
+cp deploy/lucifer "$stage/bin/lucifer"
+cp deploy/lucifer-install "$stage/libexec/lucifer-install"
 cp docs/install/INSTALL.md "$stage/INSTALL.md"
-chmod 0755 "$stage/bin/lucifer-maint" "$stage/bin/lucifer-install" "$stage/bin/Amp.Nfc"
+chmod 0755 "$stage/bin/lucifer" "$stage/bin/lucifer-maint" "$stage/libexec/lucifer-install" "$stage/bin/Amp.Nfc"
 printf '%s\n' "$version" > "$stage/VERSION"
 printf '%s\n' "$rid" > "$stage/RID"
 

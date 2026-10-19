@@ -87,7 +87,7 @@ sudo -u lucifer /opt/lucifer/current/bin/lucifer-maint tag read      # optional 
 sudo systemctl start lucifer
 ```
 
-`lucifer-maint` loads the service's environment file so `LUCIFER_IPC_DIR` and the lock are shared. Without the unit, stop the running `play` process instead and run the command directly.
+`sudo -u lucifer lucifer tag write --release <release-uuid>` is equivalent: the installed `lucifer` command forwards `play`, `check`, `tag` and `input` to `lucifer-maint`. `lucifer-maint` loads the service's environment file so `LUCIFER_IPC_DIR` and the lock are shared. Without the unit, stop the running `play` process instead and run the command directly.
 
 ## Configuration
 
@@ -186,11 +186,11 @@ Not fatal: a long idle period with no tag, transient Navidrome/network/album fai
 
 ## Packaging and installation
 
-`deploy/publish.sh --rid linux-arm64|linux-arm [--version V] [--out dir]` builds a self-contained, versioned archive plus a SHA-256 file. The RID must match the Pi's userland (`dpkg --print-architecture`: `arm64` gives `linux-arm64`, `armhf` gives `linux-arm`), which is not yet recorded (LUC-08). The archive holds `bin/` (app, `lucifer-maint` and `lucifer-install`), `config/` examples, `systemd/`, `udev/`, `VERSION`, `RID` and INSTALL.md.
+`deploy/publish.sh --rid linux-arm64|linux-arm [--version V] [--out dir]` builds a self-contained, versioned archive plus a SHA-256 file. The RID must match the Pi's userland (`dpkg --print-architecture`: `arm64` gives `linux-arm64`, `armhf` gives `linux-arm`), which is not yet recorded (LUC-08). The archive holds `bin/` (app, the `lucifer` command and `lucifer-maint`), `libexec/lucifer-install` (private engine), `config/` examples, `systemd/`, `udev/`, `VERSION`, `RID` and INSTALL.md.
 
-One-line installation from GitHub Releases (prebuilt, no build or copying; needs a published release, see INSTALL.md): `curl -fsSL https://raw.githubusercontent.com/rothzeta/lucifer/master/install.sh | sudo bash`, later `sudo lucifer-install update`. Pushing a `v*` tag runs `.github/workflows/release.yml`, which attaches the packages. `deploy/test-lucifer-bootstrap.sh` tests this against a local fake server.
+One-line installation from GitHub Releases (prebuilt, no build or copying; needs a published release, see INSTALL.md): `curl -fsSL https://raw.githubusercontent.com/rothzeta/lucifer/master/install.sh | sudo bash`, later `sudo lucifer update` (and `sudo lucifer rollback`, `lucifer list`). Pushing a `v*` tag runs `.github/workflows/release.yml`, which attaches the packages. `deploy/test-lucifer-bootstrap.sh` tests this against a local fake server.
 
-For offline use, on the Pi `sudo lucifer-install install|update|rollback <archive>` (script `deploy/lucifer-install`, packaged as `bin/lucifer-install`) installs a local archive and its `.sha256`, preserves configuration, catalogue, input map and earlier releases, and restores the previous release if an update fails; `lucifer-install list` shows releases. Usage and failure semantics: [INSTALL.md](docs/install/INSTALL.md). Real-Pi installation is unverified; `deploy/test-lucifer-install.sh` covers it with stubs only.
+For offline use, on the Pi `sudo lucifer update <archive>` (first installation from an unpacked archive: `sudo libexec/lucifer-install install <archive>`; the engine is `deploy/lucifer-install`, packaged privately as `libexec/lucifer-install`) installs a local archive and its `.sha256`, preserves configuration, catalogue, input map and earlier releases, and restores the previous release if an update fails; `lucifer list` shows releases. Usage and failure semantics: [INSTALL.md](docs/install/INSTALL.md). Real-Pi installation is unverified; `deploy/test-lucifer-install.sh` and `deploy/test-lucifer-command.sh` cover it with stubs only.
 
 The installer leaves the service stopped until the placeholder password is replaced; then run `lucifer-maint check` and `systemctl enable --now lucifer`. The exact steps, health check, update, roll-back and uninstall are in [docs/install/INSTALL.md](docs/install/INSTALL.md). **Nothing there has been run on a Pi.**
 
@@ -248,7 +248,7 @@ Paste the results into [blackboards/ACCEPTANCE.md](blackboards/ACCEPTANCE.md) (r
 | `Amp.Nfc.Tests/` | Automated tests (fakes for reader, mpv and server). |
 | `Lucifer.slnx` | Solution. |
 | `catalogue.example.json`, `input-map.example.json` | Example catalogue and input map (placeholders). |
-| `deploy/` | `publish.sh`, `lucifer.service`, `lucifer-maint`, env, udev and tmpfiles examples, maintenance script test. |
+| `deploy/` | `publish.sh`, `lucifer` (command), `lucifer-install` (private engine), `lucifer.service`, `lucifer-maint`, env, udev and tmpfiles examples, maintenance script test. |
 | `docs/install/INSTALL.md` | Pi installation, update, roll-back, uninstall. |
 | `docs/reviews/` | Source review. |
 | `docs/coordination/v1/` | Engineering coordination records. |

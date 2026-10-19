@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# The installed `lucifer` command (linked to /usr/local/bin/lucifer).
+#
+#   sudo lucifer update [--version TAG] [--adopt] [ARCHIVE]   install the latest (or named) release
+#   sudo lucifer rollback [RELEASE]                           re-activate the previous (or named) release
+#   lucifer list                                              show installed releases
+#   lucifer play | check | tag ... | input inspect            the player's commands, with the
+#                                                             service's environment file loaded
+#   lucifer help
+#
+# update, rollback and list go to the private installer engine and never read
+# the configuration or touch the service's audio or reader. Everything else is
+# forwarded unchanged (arguments and exit status) to lucifer-maint, which loads
+# the environment file, except unknown commands and help, which the application
+# answers without any configuration.
+set -euo pipefail
+here="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+
+admin() {
+  cat <<'TEXT'
+
+Installation and updates (run as root):
+  lucifer update [--version TAG] [--adopt] [ARCHIVE]   Install the latest stable release, or release TAG.
+  lucifer rollback [RELEASE]                           Re-activate the previous release, or RELEASE.
+  lucifer list                                         Show installed releases; the current one is marked.
+TEXT
+}
+
+case "${1:-}" in
+  update|rollback|list) exec "$here/../libexec/lucifer-install" "$@" ;;
+  play|check|tag|input) exec "$here/lucifer-maint" "$@" ;;
+esac
+
+rc=0
+"$here/Amp.Nfc" "$@" || rc=$?
+if [ "$rc" = 0 ]; then admin; else admin >&2; fi
+exit "$rc"
