@@ -9,7 +9,7 @@
 - All task-created specialist sessions/workspaces, clean worktrees and exact private launch directories released; all task branches/reports retained. Owner checkout and caller session intentionally retained, stale source pr-1 and unrelated resources preserved.
 - Important external state: read-only inspection found public source repository, no releases/tags and no remote master/install.sh. No code/assets published under original no-push restriction. Therefore the live one-liner is not yet usable.
 - Limits: no remote Actions run, live release download or physical Pi/systemd acceptance. Checksums detect corruption, not publisher identity. Optional findings in independent review remain deferred.
-- Next owner decision: whether to authorize publishing reviewed code to the default branch and the first release. Coordinator proposal is master plus v0.1.0; this is a proposal, not owner authority, and no remote action may occur from silence.
+- Publication authorized by DEC-006, raw publication-authorization.md: owner answered "yes" to pushing reviewed code to master and publishing v0.1.0. Phase publication preparation; fresh Implementer handles remote delivery and isolated live-asset verification. No force push/tag replacement, real host/Pi install or unrelated remote changes authorized.
 
 ## Earlier delivery snapshot (superseded for onboarding by DEC-005)
 
@@ -168,3 +168,13 @@ Phase final cleanup. WORK-05/WORK-07 reuse ends; committed branch/report reachab
 
 
 Final revised-task cleanup confirmed: wJZ/session closed, clean implementation worktree and exact private launch directory removed. WORK-06 resources were already released. All corrected-feature specialist work committed/reachable and resources released, no cleanup blockers. Earlier local archive-first delivery remains preserved as history; normal install/update now uses GitHub Releases per DEC-005. Live publication remains pending an explicit owner decision; no push/tag/release/remote workflow has run.
+
+## DEC-006 publication authorization and work
+
+Accepted owner response "yes" to "May I push the reviewed code to master and publish release v0.1.0?" Exact quoted formatted question and restriction explanation preserved in [publication-authorization.md](publication-authorization.md). Owner timestamp not supplied. This supersedes DEC-002 no-push/no-publication only for the reviewed code to configured origin master and first release v0.1.0; it does not revoke no real host/Pi installation or preservation/review requirements. Earlier proposal is now adopted, not inferred from silence.
+
+WORK-08 publication Implementer planned: fresh lucifer-publish worktree/branch from this committed authorization (descendant of local 99e9465, accepted product e2ee0f4, independent review abb2f11/evidence ed5ab05). Preferred route Sonnet 5.5 medium, auto-review, canonical resources/catalogs. No ports/profiles/databases needed except ephemeral isolated verification fixtures. Standalone topology avoids previously observed stale linked-parent metadata. Source pr-1, retained owner checkout/caller session and unrelated workspaces protected.
+
+Publication gates: independently accepted product and exact-code evidence already preserved; worker must confirm unchanged product, remote master still expected 452637b20863d6db8f993bc8b1674aaa44534ad6, non-force fast-forward possible, v0.1.0 absent, and native authorization ready before pushing. If target moved, tag exists unexpectedly, conflicts/material changes or external policy/account blocker appear, stop affected remote mutation and report concrete state; do not force or change routes. Then trigger/monitor release workflow, verify public assets/checksums/RID/help and actual curl bootstrap through isolated roots/stubs, never a real install.
+
+Delivery/report ownership: worker owns unchanged assignments/publication-v1.md and reports/publication.md only, no product/source/test edits or Coordinator record edits. Report exact published revision, tag/release/run URLs/outcomes and live evidence. Any material fix requires fresh checks/review before delivery. Two failed fix/review cycles maximum; no invented route fallback. Coordinator retains authoritative record, consumes handoff once and cleans resources.
