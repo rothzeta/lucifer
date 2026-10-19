@@ -2,14 +2,11 @@
 
 ## Current revision snapshot
 
-- Complete locally: DEC-005 GitHub Releases correction, combined verification, independent review/re-review, separate authorized local delivery and specialist cleanup.
-- Destination retained: ruach/lucifer-install-update, delivery merge 9951c826f4c8b4a9526d86bbfb9dfe0b36f2ae7a, evidence merge 831c15c1ee81a23a944df05596a83d4431311639. Final Coordinator commit changes records only.
-- Accepted/tested product e2ee0f4a4d7d76fb3b7237fd6ffb5f8cb2371bd2; reviewed abb2f1176973a7f992cf781bee599ad8b81d284d; independent acceptance evidence ed5ab055c439a81aca9deac03363ed915ff45642.
-- Evidence: reports/github-fixes-v2.md, reports/github-review-v2.md, reports/github-delivery.md; initial findings preserved. Combined deployment/bootstrap suites, exhaustive reviewer truncation sweep, local TLS redirect probes and both RID package builds pass; unchanged-app 408-test evidence reused. No local code/review blockers.
-- All task-created specialist sessions/workspaces, clean worktrees and exact private launch directories released; all task branches/reports retained. Owner checkout and caller session intentionally retained, stale source pr-1 and unrelated resources preserved.
-- Important external state: read-only inspection found public source repository, no releases/tags and no remote master/install.sh. No code/assets published under original no-push restriction. Therefore the live one-liner is not yet usable.
-- Limits: no remote Actions run, live release download or physical Pi/systemd acceptance. Checksums detect corruption, not publisher identity. Optional findings in independent review remain deferred.
-- Publication authorized by DEC-006, raw publication-authorization.md: owner answered "yes" to pushing reviewed code to master and publishing v0.1.0. Phase publication preparation; fresh Implementer handles remote delivery and isolated live-asset verification. No force push/tag replacement, real host/Pi install or unrelated remote changes authorized.
+- Installer/update feature complete, independently reviewed and locally delivered. Product e2ee0f4a4d7d76fb3b7237fd6ffb5f8cb2371bd2; acceptance ed5ab055c439a81aca9deac03363ed915ff45642. See reports/github-review-v2.md and reports/github-delivery.md.
+- Remote master and immutable v0.1.0 tag point to accepted publication revision 91c264d80208242f304e3b1ab496921a8efb81cc. No GitHub Release/assets exist: the live installer remains blocked at release download. Publication report reports/publication.md records failed existing application tests in release CI; no checks waived.
+- DEC-007 scope correction stops all application-fix work. Partial application commits remain only on ruach/lucifer-publish, most recently 8e016b70c04bde96e31f764c90a796f9ed9fa989; they are unreviewed and must not be integrated or published.
+- Phase: preserve stopped worker evidence and release its resources. lucifer-publish (wK3:p1) was interrupted and observed done; new preservation-only assignment will collect exact state, owned subprocess evidence and a canonical handoff. No more application testing or release retry authorized by this plan.
+- Retain owner checkout and caller session, source stale pr-1 and unrelated resources. Physical acceptance remains unverified. No privileged installation performed.
 
 ## Earlier delivery snapshot (superseded for onboarding by DEC-005)
 
@@ -208,3 +205,9 @@ WORK-09b reuse ends after design handoff; Coordinator will close wK4/session, re
 Architect resources released: wK4/session closed, clean worktree removed and private launch directory <temporary-root>/ruach-herdr-0XiCts removed; branch ruach/lucifer-release-plan retained. Coordinator read-only process audit found zero matching busy loops, including zero task-owned and zero unattributed, and sent no signals. Historical pattern-kill victim ownership remains unconfirmed; incident preserved in report. Final tests may now run with sole explicitly tracked Implementer load.
 
 Native worker-pane steering observed (wK3:p1 while WORK-10/11 running): queued human question "wtf are you doing ? why is it a ruach skill?" Root API source/identity not independently confirmed, so treat as a question, not cancellation or publication authority. Coordinator clarified that Ruach is the originally requested coordination workflow and the product changes are Lucifer shutdown/test fixes; tag remains unchanged. Worker instructed to answer truthfully and preserve any consequential steering. No scope, route or authority change inferred.
+
+## DEC-007: scope correction and stop
+
+Direct owner API source [owner-scope-correction.md](owner-scope-correction.md): "why so complicated?" and "all i asked for is an install script to be run from git with bash and a update command". Record before action: the application-fix detour exceeded the owner’s requested scope. Supersede WORK-10/11 implementation and combined-verification assignments immediately. Preserve their partial code/reports on the separate retained branch; do not integrate, review for delivery, push or publish those fixes. Original installer/update acceptance stands. Prior publication authority DEC-006 remains limited to its named reviewed code/version and does not waive the now-observed release gate or permit retagging.
+
+WORK-12 preservation-only assignment planned for the same live Implementer, preferred Sonnet 5.5 medium auto-review. Scope: unchanged assignment preservation, current committed state and concise partial handoff, report exact task-owned subprocesses/disposable evidence; no source/test edits or tests. Coordinator handles resource release after evidence is committed and branch retained. Current publication blocker is existing application test failures; application fixes are no longer an authorized next step. No new route or worker required.
