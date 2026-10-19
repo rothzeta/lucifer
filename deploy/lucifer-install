@@ -1,0 +1,557 @@
+#!/usr/bin/env bash
+# Install, update and roll back Lucifer from a local release archive.
+#
+#   sudo lucifer-install install  [--start] [--adopt] [--checksum FILE] [--target-rid RID] ARCHIVE
+#   sudo lucifer-install update   [--adopt] [--checksum FILE] [--target-rid RID] ARCHIVE
+#   sudo lucifer-install rollback [--adopt] [RELEASE]
+#   lucifer-install list
+#
+# ARCHIVE is lucifer-<version>-<rid>.tar.gz from deploy/publish.sh; its
+# SHA-256 file ARCHIVE.sha256 is expected next to it (--checksum names another).
+# The checksum detects corruption only: it does not authenticate the publisher.
+# Nothing is downloaded. Run as root (or via sudo).
+#
+# install   First installation. Refused when /opt/lucifer/current exists (use
+#           update). Creates the lucifer account and directories, installs the
+#           release, the systemd unit and tmpfiles snippet, and creates the
+#           missing /etc/lucifer/lucifer.env and /var/lib/lucifer/catalogue.json
+#           from the examples. It never starts the service unless --start is
+#           given and the configuration no longer holds the placeholder password.
+# update    Stages and checks the new release before stopping the service, then
+#           switches /opt/lucifer/current atomically, refreshes the unit and
+#           support files, and restarts the service only if it was active.
+#           Configuration, catalogue, input map and older releases are untouched.
+#           On failure the previous release, unit and support files are restored.
+# rollback  Re-activate the previous release (or the named one from list) with
+#           the same safeguards as update, including the hand-edit refusal.
+# list      Show installed releases; the active one is marked.
+#
+# --adopt   Replace a unit or tmpfiles snippet that was edited by hand (it
+#           differs from the packaged copies); install, update and rollback all
+#           refuse without it, and the original is kept in /opt/lucifer/backups.
+# --target-rid  Userland RID of this host (linux-arm64 or linux-arm). Default:
+#           derived from `dpkg --print-architecture`.
+#
+# Limits: the archive is copied to a private temporary snapshot (TMPDIR or
+# /var/tmp, roughly twice the unpacked size free) and verified, listed and
+# extracted from that copy only. INT, TERM and HUP restore the previous state;
+# SIGKILL or power loss cannot be undone in-process: check `lucifer-install
+# list` and `systemctl status lucifer`, and the next run removes the
+# interrupted release directory by itself.
+#
+# Exit codes: 0 success, 1 failure (host restored), 2 usage, 3 refused because
+# of the existing installation state. Configuration values are never read into
+# the shell and never printed.
+#
+# Test hook: LUCIFER_INSTALL_ROOT prefixes every host path (not for production).
+# LUCIFER_INSTALL_SETTLE_SECONDS (default 3) is the wait before the restarted
+# service must report active.
+set -euo pipefail
+
+SERVICE_USER=lucifer
+SERVICE_GROUPS=(dialout audio input)
+
+ROOT="${LUCIFER_INSTALL_ROOT:-}"
+OPT="$ROOT/opt/lucifer"
+RELEASES="$OPT/releases"
+CURRENT="$OPT/current"
+PREVIOUS="$OPT/previous"
+BACKUPS="$OPT/backups"
+ETC_DIR="$ROOT/etc/lucifer"
+ENV_FILE="$ETC_DIR/lucifer.env"
+VAR_DIR="$ROOT/var/lib/lucifer"
+CATALOGUE="$VAR_DIR/catalogue.json"
+UNIT="$ROOT/etc/systemd/system/lucifer.service"
+TMPFILES="$ROOT/etc/tmpfiles.d/lucifer.conf"
+SBIN_LINK="$ROOT/usr/local/sbin/lucifer-install"
+SETTLE="${LUCIFER_INSTALL_SETTLE_SECONDS:-3}"
+
+usage() { sed -n '2,/^set -euo/{/^set -euo/!p}' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+die() { local code="$1"; shift; echo "lucifer-install: $*" >&2; exit "$code"; }
+say() { echo "lucifer-install: $*"; }
+warn() { echo "lucifer-install: warning: $*" >&2; }
+
+# -- archive validation (no host effects) ------------------------------------
+
+top="" version="" rid="" stage="" snap="" pkg="" new_release="" pending=""
+
+cleanup() {
+  [ -z "$stage" ] || rm -rf "${stage:?}"
+  [ -z "$snap" ] || rm -rf "${snap:?}"
+  stage="" snap=""
+}
+trap cleanup EXIT
+
+validate_archive() {
+  local archive="$1" checksum="$2" target_rid="$3" base name sum expected
+  [ -f "$archive" ] && [ -r "$archive" ] || die 2 "archive not found or unreadable: $archive"
+  base="$(basename "$archive")"
+  if ! [[ "$base" =~ ^lucifer-([A-Za-z0-9][A-Za-z0-9._+-]*)-(linux-arm64|linux-arm)\.tar\.gz$ ]]; then
+    die 2 "archive name must be lucifer-<version>-<rid>.tar.gz with rid linux-arm64 or linux-arm: $base"
+  fi
+  version="${BASH_REMATCH[1]}"; rid="${BASH_REMATCH[2]}"
+  top="${base%.tar.gz}"
+
+  [ -n "$checksum" ] || checksum="$archive.sha256"
+  [ -f "$checksum" ] || die 1 "checksum file not found: $checksum"
+  # Everything below reads a private root-only snapshot, never the caller's
+  # (possibly writable) paths again: the verified bytes are the installed bytes.
+  snap="$(mktemp -d "${TMPDIR:-/var/tmp}/lucifer-install.XXXXXX")"
+  cp -- "$archive" "$snap/$base" || die 1 "cannot copy the archive to a private snapshot"
+  cp -- "$checksum" "$snap/checksum" || die 1 "cannot read the checksum file"
+  archive="$snap/$base"
+  name="$(head -n 1 "$snap/checksum")"
+  if ! [[ "$name" =~ ^([0-9a-fA-F]{64})\ [\ \*](.+)$ ]] || [ "${BASH_REMATCH[2]}" != "$base" ]; then
+    die 1 "checksum file is not '<sha256>  $base'"
+  fi
+  expected="${BASH_REMATCH[1],,}"
+  sum="$(sha256sum "$archive")"; sum="${sum%% *}"
+  [ "$sum" = "$expected" ] || die 1 "checksum mismatch for $base (corrupted or altered archive)"
+
+  if [ -z "$target_rid" ]; then
+    case "$(dpkg --print-architecture 2>/dev/null || true)" in
+      arm64) target_rid=linux-arm64 ;;
+      armhf) target_rid=linux-arm ;;
+      *) die 1 "cannot derive the userland RID from dpkg; pass --target-rid linux-arm64|linux-arm" ;;
+    esac
+  fi
+  case "$target_rid" in linux-arm64|linux-arm) ;; *) die 2 "--target-rid must be linux-arm64 or linux-arm" ;; esac
+  [ "$rid" = "$target_rid" ] || die 1 "archive is for $rid but this host's userland is $target_rid"
+
+  # Member names and types, inspected without extracting anything.
+  local names types n t line i
+  names="$(tar -tzf "$archive" 2>/dev/null)" || die 1 "not a readable gzip tar archive: $base"
+  types="$(tar -tvzf "$archive" 2>/dev/null)" || die 1 "not a readable gzip tar archive: $base"
+  n="$(printf '%s\n' "$names" | wc -l)"; t="$(printf '%s\n' "$types" | wc -l)"
+  [ "$n" = "$t" ] && [ -n "$names" ] || die 1 "unreadable archive listing: $base"
+  i=0
+  while IFS= read -r line; do
+    i=$((i + 1))
+    if ! [[ "$line" =~ ^[A-Za-z0-9._+@=,/-]+$ ]]; then die 1 "unsafe member name in archive (entry $i)"; fi
+    case "/${line%/}/" in
+      */../*|*//*|*/./*) die 1 "unsafe member path in archive: $line" ;;
+    esac
+    [ "$line" = "$top" ] || [ "$line" = "$top/" ] || [[ "$line" == "$top/"* ]] || die 1 "archive member outside $top/: $line"
+  done <<<"$names"
+  while IFS= read -r line; do
+    case "${line:0:1}" in -|d) ;; *) die 1 "archive contains a link or special file; refused" ;; esac
+  done <<<"$types"
+  local m
+  for m in VERSION RID bin/Amp.Nfc bin/lucifer-maint bin/lucifer-install config/lucifer.env.example \
+           config/catalogue.example.json systemd/lucifer.service systemd/lucifer.tmpfiles.conf; do
+    grep -qxF "$top/$m" <<<"$names" || die 1 "archive lacks $m"
+  done
+  # Extract once into the private snapshot; over-long names, a damaged stream or
+  # a full disk fail here, before any account, directory or unit is touched.
+  mkdir "$snap/pkg"
+  tar -xzf "$archive" -C "$snap/pkg" --no-same-owner --no-same-permissions 2>/dev/null \
+    || die 1 "archive could not be extracted: $base"
+  chmod -R u=rwX,go=rX "$snap/pkg"
+  pkg="$snap/pkg"
+  [ -z "$(find "$pkg" ! -type f ! -type d -print -quit)" ] || die 1 "archive extracted to something other than files and directories"
+  [ "$(head -c 200 "$pkg/$top/VERSION" | tr -d '\n')" = "$version" ] || die 1 "VERSION in archive does not match its name"
+  [ "$(head -c 200 "$pkg/$top/RID" | tr -d '\n')" = "$rid" ] || die 1 "RID in archive does not match its name"
+  [ -x "$pkg/$top/bin/Amp.Nfc" ] && [ -x "$pkg/$top/bin/lucifer-maint" ] && [ -x "$pkg/$top/bin/lucifer-install" ] \
+    || die 1 "archive entry points are not executable"
+}
+
+# -- helpers -------------------------------------------------------------------
+
+own() { chown "$1" "${@:2}"; }
+
+svc_active() { systemctl is-active --quiet lucifer 2>/dev/null; }
+svc_enabled() { systemctl is-enabled --quiet lucifer 2>/dev/null; }
+
+require_root() {
+  [ "$(id -u)" = 0 ] || die 1 "must run as root (use sudo)"
+  command -v systemctl >/dev/null || die 1 "systemctl not found"
+  command -v tar >/dev/null && command -v sha256sum >/dev/null || die 1 "tar and sha256sum are required"
+}
+
+take_lock() {
+  mkdir -p "$OPT"
+  exec 9>"$OPT/.lock"
+  flock -n 9 || die 1 "another lucifer-install is running"
+}
+
+# True when the file is missing or its password is absent, blank or the shipped
+# placeholder (CR and surrounding blanks ignored). The file is only read, never
+# sourced, and no value is printed.
+placeholder_config() {
+  [ -f "$ENV_FILE" ] || return 0
+  local line v found=1
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line%$'\r'}"
+    case "$line" in NAVIDROME_PASSWORD=*) ;; *) continue ;; esac
+    found=0
+    v="${line#NAVIDROME_PASSWORD=}"
+    v="${v#"${v%%[![:space:]]*}"}"; v="${v%"${v##*[![:space:]]}"}"
+    if [ -z "$v" ] || [ "$v" = change-me ]; then return 0; fi
+  done < "$ENV_FILE"
+  [ "$found" = 1 ]
+}
+
+release_name() { local t; t="$(readlink "$1" 2>/dev/null)" || return 1; basename "$t"; }
+
+# -- host preparation (install) ------------------------------------------------
+
+ensure_account() {
+  if ! getent passwd "$SERVICE_USER" >/dev/null; then
+    useradd --system --user-group --home-dir /var/lib/lucifer --no-create-home \
+            --shell /usr/sbin/nologin "$SERVICE_USER"
+    say "created system account $SERVICE_USER"
+  fi
+  local g members
+  members=" $(id -nG "$SERVICE_USER" 2>/dev/null || true) "
+  for g in "${SERVICE_GROUPS[@]}"; do
+    if ! getent group "$g" >/dev/null; then warn "group $g does not exist on this host; skipped"; continue; fi
+    case "$members" in *" $g "*) ;; *) usermod -aG "$g" "$SERVICE_USER" ;; esac
+  done
+}
+
+ensure_dirs() {
+  mkdir -p "$RELEASES" "$BACKUPS" "$ETC_DIR" "$VAR_DIR" "$(dirname "$UNIT")" "$(dirname "$TMPFILES")" "$(dirname "$SBIN_LINK")"
+  chmod 0755 "$OPT" "$RELEASES"; chmod 0700 "$BACKUPS"; own root:root "$OPT" "$RELEASES" "$BACKUPS"
+  chmod 0750 "$ETC_DIR"; own "root:$SERVICE_USER" "$ETC_DIR"
+  chmod 0750 "$VAR_DIR"; own "$SERVICE_USER:$SERVICE_USER" "$VAR_DIR"
+}
+
+# Create missing configuration from the release examples; never overwrite.
+init_config() {
+  local rel="$1"
+  if [ ! -e "$ENV_FILE" ]; then
+    install -m 0640 "$rel/config/lucifer.env.example" "$ENV_FILE"
+  fi
+  chmod 0640 "$ENV_FILE"; own "root:$SERVICE_USER" "$ENV_FILE"
+  if [ ! -e "$CATALOGUE" ]; then
+    install -m 0640 "$rel/config/catalogue.example.json" "$CATALOGUE"
+    own "$SERVICE_USER:$SERVICE_USER" "$CATALOGUE"
+    say "created catalogue from the example (replace its entries with verified ones)"
+  fi
+}
+
+# -- extraction ------------------------------------------------------------------
+
+# Remove what an interrupted earlier run (kill, power loss) left behind. Runs
+# under the lock, so nothing live can be removed.
+clear_interrupted() {
+  local m n
+  rm -rf "${RELEASES:?}"/.stage.* 2>/dev/null || true
+  # A transaction directory left by a killed run holds the unit and tmpfiles
+  # copies from before that run: keep them under backups/ instead of deleting.
+  for m in "$OPT"/.txn.*; do
+    [ -d "$m" ] || continue
+    mkdir -p "$BACKUPS" && chmod 0700 "$BACKUPS"
+    mv "$m" "$BACKUPS/interrupted-${m##*/.txn.}" 2>/dev/null || true
+    warn "kept the saved files of an interrupted run in $BACKUPS/interrupted-${m##*/.txn.}"
+  done
+  for m in "$RELEASES"/.pending-*; do
+    [ -e "$m" ] || continue
+    n="${m##*/.pending-}"
+    if [ -n "$n" ] && [ -d "$RELEASES/$n" ] && [ "$(release_name "$CURRENT" 2>/dev/null || true)" != "$n" ] \
+       && [ "$(release_name "$PREVIOUS" 2>/dev/null || true)" != "$n" ]; then
+      warn "removing release $n left by an interrupted run"
+      rm -rf "${RELEASES:?}/${n:?}"
+    fi
+    rm -f "$m"
+  done
+}
+
+# Copy the verified private package into a hidden staging directory (same
+# filesystem as releases/, so the final rename is atomic) and finalize ownership.
+stage_release() {
+  [ ! -e "$RELEASES/$top" ] || die 3 "release $top is already present and is not an interrupted leftover; use rollback, or remove $RELEASES/$top if it is unwanted"
+  stage="$(mktemp -d "$RELEASES/.stage.XXXXXX")"
+  chmod 0755 "$stage"
+  cp -a "$pkg/$top" "$stage/$top"
+  chmod -R u=rwX,go=rX "$stage"
+  own -R root:root "$stage"
+}
+
+# Make the staged release visible. The marker lets a later run clear it if this
+# one is killed before the activation commits.
+publish_release() {
+  pending="$RELEASES/.pending-$top"
+  : > "$pending"
+  mv -T "$stage/$top" "$RELEASES/$top"
+  new_release="$RELEASES/$top"
+  rm -rf "${stage:?}"; stage=""
+}
+
+discard_new_release() {
+  [ -z "$new_release" ] || rm -rf "${new_release:?}"
+  [ -z "$pending" ] || rm -f "$pending"
+  new_release="" pending=""
+}
+
+commit_new_release() { [ -z "$pending" ] || rm -f "$pending"; new_release="" pending=""; }
+
+check_config_as_service() {
+  local rel="$1"
+  runuser -u "$SERVICE_USER" -- env "LUCIFER_ENV_FILE=$ENV_FILE" "$rel/bin/lucifer-maint" check >/dev/null
+}
+
+# -- transactional activation -----------------------------------------------------
+
+txn=""; txn_open=0
+prev_target="" prev_previous="" was_active=0 was_enabled=0 txn_enabled=0 txn_started=0 had_unit=0 had_tmpfiles=0 had_sbin=0 had_previous=0
+
+txn_begin() {
+  txn="$(mktemp -d "$OPT/.txn.XXXXXX")"
+  prev_target="$(readlink "$CURRENT" 2>/dev/null || true)"
+  prev_previous="$(readlink "$PREVIOUS" 2>/dev/null || true)"
+  [ -n "$prev_previous" ] && had_previous=1 || had_previous=0
+  if [ -f "$UNIT" ]; then had_unit=1; cp -p "$UNIT" "$txn/unit"; fi
+  if [ -f "$TMPFILES" ]; then had_tmpfiles=1; cp -p "$TMPFILES" "$txn/tmpfiles"; fi
+  if [ -L "$SBIN_LINK" ] || [ -e "$SBIN_LINK" ]; then had_sbin=1; fi
+  if svc_active; then was_active=1; else was_active=0; fi
+  if svc_enabled; then was_enabled=1; else was_enabled=0; fi
+  txn_enabled=0 txn_started=0
+  txn_open=1
+}
+
+atomic_link() { ln -sfn "$2" "$1.new.$$" && mv -T "$1.new.$$" "$1"; }
+
+atomic_install() { # src dst mode
+  install -m "$3" "$1" "$2.new.$$" && own root:root "$2.new.$$" && mv -f "$2.new.$$" "$2"
+}
+
+txn_restore() {
+  [ "$txn_open" = 1 ] || return 0
+  txn_open=0
+  warn "restoring the previous installation"
+  # Undo only what this transaction did to the service, while the unit file
+  # still exists: stop work it started, then remove an enable it added.
+  if [ "$txn_started" = 1 ] && [ "$was_active" = 0 ]; then
+    systemctl stop lucifer || true
+    systemctl reset-failed lucifer 2>/dev/null || true
+  fi
+  if [ "$txn_enabled" = 1 ] && [ "$was_enabled" = 0 ]; then
+    systemctl disable lucifer || warn "could not disable lucifer again; check: systemctl is-enabled lucifer"
+  fi
+  if [ -n "$prev_target" ]; then atomic_link "$CURRENT" "$prev_target" || true; else rm -f "$CURRENT"; fi
+  if [ "$had_previous" = 1 ]; then atomic_link "$PREVIOUS" "$prev_previous" || true; else rm -f "$PREVIOUS"; fi
+  if [ "$had_unit" = 1 ]; then cp -p "$txn/unit" "$UNIT" || true; else rm -f "$UNIT"; fi
+  if [ "$had_tmpfiles" = 1 ]; then
+    cp -p "$txn/tmpfiles" "$TMPFILES" || true
+    systemd-tmpfiles --create "$TMPFILES" || true
+  else
+    rm -f "$TMPFILES"
+  fi
+  [ "$had_sbin" = 1 ] || rm -f "$SBIN_LINK"
+  systemctl daemon-reload || true
+  if [ "$was_active" = 1 ]; then
+    systemctl start lucifer || warn "previous release could not be restarted; check: systemctl status lucifer"
+  fi
+  rm -rf "$txn"
+}
+
+txn_commit() { txn_open=0; rm -rf "$txn"; }
+
+on_signal() { txn_restore; discard_new_release; exit 1; }
+
+# Refuse to overwrite a hand-edited unit/tmpfiles unless --adopt.
+guard_manual_files() {
+  local new_rel="$1" adopt="$2" cur="" f dst
+  if [ -L "$CURRENT" ]; then cur="$(readlink -f "$CURRENT")"; fi
+  local pair
+  for pair in "systemd/lucifer.service:$UNIT" "systemd/lucifer.tmpfiles.conf:$TMPFILES"; do
+    f="${pair%%:*}"; dst="${pair#*:}"
+    [ -f "$dst" ] || continue
+    cmp -s "$dst" "$new_rel/$f" && continue
+    if [ -n "$cur" ] && cmp -s "$dst" "$cur/$f"; then continue; fi
+    if [ "$adopt" != 1 ]; then
+      die 3 "$dst differs from any packaged copy (edited by hand, installed manually, or left by a killed run: see INSTALL.md, After a crash); re-run with --adopt to replace it (a backup is kept in $BACKUPS)"
+    fi
+    mkdir -p "$BACKUPS" && chmod 0700 "$BACKUPS"
+    cp -p "$dst" "$BACKUPS/$(basename "$dst").$(date -u +%Y%m%dT%H%M%SZ)"
+  done
+}
+
+# Steps run with `|| return 1` throughout: errexit is off inside a context that
+# is tested, so each command is checked explicitly.
+activate_steps() {
+  local name="$1" mode="$2" start_new="$3" rel="$RELEASES/$1"
+  if [ "$was_active" = 1 ]; then systemctl stop lucifer || return 1; fi
+  atomic_install "$rel/systemd/lucifer.service" "$UNIT" 0644 || return 1
+  atomic_install "$rel/systemd/lucifer.tmpfiles.conf" "$TMPFILES" 0644 || return 1
+  systemd-tmpfiles --create "$TMPFILES" || return 1
+  systemctl daemon-reload || return 1
+  atomic_link "$CURRENT" "releases/$name" || return 1
+  # The release is complete and live from here: a later kill must not let the
+  # interrupted-run cleanup treat it as a leftover.
+  [ -z "$pending" ] || rm -f "$pending"
+  if [ -n "$prev_target" ] && [ "$(basename "$prev_target")" != "$name" ]; then
+    atomic_link "$PREVIOUS" "$prev_target" || return 1
+  fi
+  if { [ "$mode" != install ] || [ "$start_new" = 1 ]; } && ! placeholder_config; then
+    check_config_as_service "$CURRENT" || return 1
+  fi
+  if [ "$start_new" = 1 ]; then txn_enabled=1; systemctl enable lucifer || return 1; fi
+  if [ "$was_active" = 1 ] || [ "$start_new" = 1 ]; then
+    txn_started=1
+    systemctl start lucifer || return 1
+    sleep "$SETTLE"
+    svc_active || return 1
+  fi
+  return 0
+}
+
+# Switch to release dir "$RELEASES/$name". mode: install|update|rollback.
+activate() {
+  local name="$1" mode="$2" start_new="${3:-0}"
+  txn_begin
+  trap on_signal INT TERM HUP
+  if ! activate_steps "$name" "$mode" "$start_new"; then
+    txn_restore
+    trap - INT TERM HUP
+    return 1
+  fi
+  txn_commit
+  trap - INT TERM HUP
+  ensure_sbin_link
+  return 0
+}
+
+ensure_sbin_link() {
+  if [ -L "$SBIN_LINK" ] || [ ! -e "$SBIN_LINK" ]; then
+    ln -sfn /opt/lucifer/current/bin/lucifer-install "$SBIN_LINK"
+  else
+    warn "$SBIN_LINK exists and is not a link; leaving it. Use /opt/lucifer/current/bin/lucifer-install"
+  fi
+}
+
+# -- commands -----------------------------------------------------------------------
+
+parse_install_args() {
+  checksum="" target_rid="" adopt=0 start=0 archive=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --checksum) [ $# -ge 2 ] || die 2 "--checksum needs a value"; checksum="$2"; shift 2 ;;
+      --target-rid) [ $# -ge 2 ] || die 2 "--target-rid needs a value"; target_rid="$2"; shift 2 ;;
+      --adopt) adopt=1; shift ;;
+      --start) [ "$cmd" = install ] || die 2 "--start is only valid for install"; start=1; shift ;;
+      -h|--help) usage; exit 0 ;;
+      -*) die 2 "unknown option: $1" ;;
+      *) [ -z "$archive" ] || die 2 "only one ARCHIVE is accepted"; archive="$1"; shift ;;
+    esac
+  done
+  [ -n "$archive" ] || die 2 "$cmd needs an ARCHIVE argument (see --help)"
+}
+
+cmd_install() {
+  parse_install_args "$@"
+  validate_archive "$archive" "$checksum" "$target_rid"
+  require_root
+  if [ "$start" = 1 ] && placeholder_config; then
+    die 3 "--start refused: $ENV_FILE is missing or its password is absent, blank or still the placeholder; edit it first"
+  fi
+  take_lock
+  if [ -e "$CURRENT" ] || [ -L "$CURRENT" ]; then
+    die 3 "$CURRENT already exists: use 'lucifer-install update' (a manual installation must be moved aside first)"
+  fi
+  guard_manual_files "$pkg/$top" "$adopt"
+  # The package is verified and extracted privately; only now change the host.
+  ensure_account
+  ensure_dirs
+  clear_interrupted
+  stage_release
+  publish_release
+  init_config "$RELEASES/$top"
+  if ! activate "$top" install "$start"; then
+    discard_new_release
+    die 1 "installation failed; the host was restored (service enable and start undone, nothing left enabled)"
+  fi
+  commit_new_release
+  say "installed release $version ($rid) at $RELEASES/$top"
+  if placeholder_config; then
+    say "NEXT: edit $ENV_FILE (NAVIDROME_URL, NAVIDROME_USER, NAVIDROME_PASSWORD, LUCIFER_AUDIO_DEVICE, LUCIFER_NFC_DEVICE)"
+    say "      then: sudo -u $SERVICE_USER /opt/lucifer/current/bin/lucifer-maint check"
+    say "      then: sudo systemctl enable --now lucifer"
+    say "the service was NOT started or enabled"
+  elif [ "$start" = 1 ]; then
+    say "service enabled and started"
+  else
+    say "existing configuration kept; start with: sudo systemctl enable --now lucifer"
+  fi
+}
+
+cmd_update() {
+  parse_install_args "$@"
+  validate_archive "$archive" "$checksum" "$target_rid"
+  require_root
+  [ -L "$CURRENT" ] || die 3 "no managed installation at $CURRENT (a missing link needs 'install'; a manual directory must be moved aside)"
+  take_lock
+  [ -L "$CURRENT" ] || die 3 "no managed installation at $CURRENT (it disappeared while waiting for the lock)"
+  [ -d "$CURRENT/" ] || die 3 "$CURRENT does not point to a release directory"
+  [ "$(release_name "$CURRENT")" != "$top" ] || die 3 "release $top is already the current one"
+  guard_manual_files "$pkg/$top" "$adopt"
+  clear_interrupted
+  stage_release
+  # Check the staged release against the live configuration before touching playback.
+  if ! placeholder_config; then
+    check_config_as_service "$stage/$top" || die 1 "the new release rejects the current configuration; nothing was changed"
+  fi
+  publish_release
+  if ! activate "$top" update; then
+    discard_new_release
+    die 1 "update failed; the previous release was restored"
+  fi
+  commit_new_release
+  say "updated to release $version ($rid); previous release kept (rollback: lucifer-install rollback)"
+}
+
+cmd_rollback() {
+  local target="" a adopt=0
+  for a in "$@"; do
+    case "$a" in
+      -h|--help) usage; exit 0 ;;
+      --adopt) adopt=1 ;;
+      -*) die 2 "unknown option: $a" ;;
+      *) [ -z "$target" ] || die 2 "only one RELEASE is accepted"; target="$a" ;;
+    esac
+  done
+  require_root
+  [ -L "$CURRENT" ] || die 3 "no managed installation at $CURRENT"
+  take_lock
+  [ -L "$CURRENT" ] || die 3 "no managed installation at $CURRENT (it disappeared while waiting for the lock)"
+  if [ -z "$target" ]; then
+    [ -L "$PREVIOUS" ] || die 3 "no previous release recorded; name one (see: lucifer-install list)"
+    target="$(release_name "$PREVIOUS")"
+  fi
+  [[ "$target" =~ ^lucifer-[A-Za-z0-9][A-Za-z0-9._+-]*$ ]] || die 2 "invalid release name: $target"
+  [ -d "$RELEASES/$target" ] || die 3 "release not found: $target"
+  [ "$(release_name "$CURRENT")" != "$target" ] || die 3 "$target is already the current release"
+  guard_manual_files "$RELEASES/$target" "$adopt"
+  activate "$target" rollback || die 1 "rollback failed; the host was restored"
+  say "rolled back to $target"
+}
+
+cmd_list() {
+  [ $# -eq 0 ] || die 2 "list takes no arguments"
+  [ -d "$RELEASES" ] || die 3 "no installation at $OPT"
+  local cur="" d
+  cur="$(release_name "$CURRENT" 2>/dev/null || true)"
+  for d in "$RELEASES"/lucifer-*; do
+    [ -d "$d" ] || continue
+    if [ "$(basename "$d")" = "$cur" ]; then echo "* $(basename "$d")"; else echo "  $(basename "$d")"; fi
+  done
+}
+
+main() {
+  [ $# -ge 1 ] || { usage >&2; exit 2; }
+  cmd="$1"; shift
+  case "$cmd" in
+    install) cmd_install "$@" ;;
+    update) cmd_update "$@" ;;
+    rollback) cmd_rollback "$@" ;;
+    list) cmd_list "$@" ;;
+    -h|--help|help) usage ;;
+    *) echo "lucifer-install: unknown command: $cmd" >&2; usage >&2; exit 2 ;;
+  esac
+}
+
+# The script may be replaced under us when current/ changes: parse it all
+# before running, and never read further after main returns.
+main "$@"
+exit $?

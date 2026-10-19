@@ -19,7 +19,7 @@ Needs the .NET 10 SDK and network or a populated NuGet cache for the runtime pac
 deploy/publish.sh --rid linux-arm64 --version 1.0.0   # or --rid linux-arm
 ```
 
-Output in `dist/`: `lucifer-<version>-<rid>.tar.gz` and `lucifer-<version>-<rid>.tar.gz.sha256`. The archive contains `bin/` (self-contained app plus `lucifer-maint`), `config/` (env, catalogue and input-map examples), `systemd/`, `udev/`, `VERSION`, `RID` and this file. Without `--version` the name comes from `git describe`.
+Output in `dist/`: `lucifer-<version>-<rid>.tar.gz` and `lucifer-<version>-<rid>.tar.gz.sha256`. The archive contains `bin/` (self-contained app plus `lucifer-maint` and `lucifer-install`), `config/` (env, catalogue and input-map examples), `systemd/`, `udev/`, `VERSION`, `RID` and this file. Without `--version` the name comes from `git describe`.
 
 Copy both files to the Pi (for example with `scp`).
 
@@ -32,25 +32,30 @@ Copy both files to the Pi (for example with `scp`).
 
 ## 3. First install (UNVERIFIED-ON-DEVICE)
 
+The package carries `bin/lucifer-install`. Unpack it once to run the installer, or run it from a checkout (`deploy/lucifer-install`). It needs root, the archive, and the `.sha256` file beside it. Nothing is downloaded.
+
 ```sh
-sha256sum -c lucifer-1.0.0-linux-arm64.tar.gz.sha256     # must print OK
-sudo useradd --system --home-dir /var/lib/lucifer --create-home --shell /usr/sbin/nologin lucifer
-sudo usermod -aG dialout,audio,input lucifer             # also set by the unit; needed for maintenance runs
-sudo install -d -o root -g root /opt/lucifer/releases
-sudo tar -xzf lucifer-1.0.0-linux-arm64.tar.gz -C /opt/lucifer/releases
-sudo ln -sfn /opt/lucifer/releases/lucifer-1.0.0-linux-arm64 /opt/lucifer/current
-R=/opt/lucifer/current
-sudo install -d -o root -g lucifer -m 0750 /etc/lucifer
-sudo install -o root -g lucifer -m 0640 $R/config/lucifer.env.example /etc/lucifer/lucifer.env
-sudo install -o lucifer -g lucifer -m 0640 $R/config/catalogue.example.json /var/lib/lucifer/catalogue.json
+sudo deploy/lucifer-install install lucifer-1.0.0-linux-arm64.tar.gz
+# or, from an unpacked archive:  sudo lucifer-1.0.0-linux-arm64/bin/lucifer-install install lucifer-1.0.0-linux-arm64.tar.gz
+```
+
+It first copies the archive and checksum file to a private root-only temporary snapshot (`TMPDIR`, default `/var/tmp`; allow about twice the unpacked size free) and does everything else from that copy, so replacing the files you passed afterwards changes nothing. Before changing the host it verifies the checksum (corruption detection only; it does not prove who published the archive, so obtain archive and checksum over a trusted channel), that the archive's RID matches this host's userland (`dpkg --print-architecture`; override with `--target-rid`), and that every member is a plain file or directory inside the single `lucifer-<version>-<rid>/` directory (no links, devices, absolute or `..` paths) with the expected entry points, and it extracts the snapshot once, so a damaged or over-long-named archive is rejected before any account, directory or unit is touched. Then it:
+
+- creates the `lucifer` system account (groups `dialout audio input` where they exist) and the directories, idempotently;
+- extracts to `/opt/lucifer/releases/lucifer-<version>-<rid>` (owned by root) and points `/opt/lucifer/current` at it;
+- installs `/etc/systemd/system/lucifer.service` and `/etc/tmpfiles.d/lucifer.conf` and reloads systemd;
+- creates `/etc/lucifer/lucifer.env` (root:lucifer 0640) and `/var/lib/lucifer/catalogue.json` only when missing; existing ones are kept byte for byte (the env file mode is tightened to 0640 root:lucifer);
+- links `/usr/local/sbin/lucifer-install` to the current release, so later commands are `sudo lucifer-install ...`.
+
+It does **not** start or enable the service. The new env file holds the placeholder password, so edit it first, check it, then enable:
+
+```sh
 sudo $EDITOR /etc/lucifer/lucifer.env                    # credentials, LUCIFER_AUDIO_DEVICE, LUCIFER_NFC_DEVICE
-sudo install -m 0644 $R/systemd/lucifer.service /etc/systemd/system/lucifer.service
-sudo install -m 0644 $R/systemd/lucifer.tmpfiles.conf /etc/tmpfiles.d/lucifer.conf
-sudo systemd-tmpfiles --create /etc/tmpfiles.d/lucifer.conf
-sudo -u lucifer $R/bin/lucifer-maint check               # validates config and catalogue
-sudo systemctl daemon-reload
+sudo -u lucifer /opt/lucifer/current/bin/lucifer-maint check
 sudo systemctl enable --now lucifer
 ```
+
+`install --start` enables and starts the service only when the env file exists and its `NAVIDROME_PASSWORD` is present, not blank and not the placeholder (CRLF and padding are ignored when judging this), and then only after `lucifer-maint check` passes against the installed release; otherwise it refuses (exit 3) or fails with the host restored (exit 1). A failure after the service was enabled or started (a failing start, or not active after the settle wait) stops what this run started and disables what this run enabled, then removes the unit, so a service that was already enabled stays enabled and nothing is left behind to start at boot. The settle wait is short (3 s, `LUCIFER_INSTALL_SETTLE_SECONDS`): it only catches a service that fails to start or dies at once, not one that crashes later, so confirm with `systemctl status lucifer` and the journal. Existing situations are handled deliberately: `install` refuses (exit 3) when `/opt/lucifer/current` already exists (use `update`; a manual directory must be moved aside) and when an existing unit or tmpfiles file differs from the package, unless `--adopt` is given (the original is kept in `/opt/lucifer/backups`). An existing configuration is never overwritten. The udev rule stays a manual step (see below).
 
 The catalogue example contains two migration examples whose server availability is unconfirmed. Replace them with verified entries (see README, Catalogue).
 
@@ -126,28 +131,30 @@ If the service is running, the maintenance run is refused with an error naming t
 
 ## 8. Update and roll back (UNVERIFIED-ON-DEVICE)
 
-The previous release directory stays in `/opt/lucifer/releases`, so rollback is a symlink change.
-
 ```sh
-sha256sum -c lucifer-1.1.0-linux-arm64.tar.gz.sha256
-sudo tar -xzf lucifer-1.1.0-linux-arm64.tar.gz -C /opt/lucifer/releases
-readlink /opt/lucifer/current                                    # note the prior release
-sudo systemctl stop lucifer
-sudo ln -sfn /opt/lucifer/releases/lucifer-1.1.0-linux-arm64 /opt/lucifer/current
-sudo -u lucifer /opt/lucifer/current/bin/lucifer-maint check
-sudo install -m 0644 /opt/lucifer/current/systemd/lucifer.service /etc/systemd/system/lucifer.service   # only if the unit changed
-sudo systemctl daemon-reload && sudo systemctl start lucifer
+sudo lucifer-install update lucifer-1.1.0-linux-arm64.tar.gz     # checksum file beside it
+sudo lucifer-install list                                        # releases, current marked *
+sudo lucifer-install rollback                                    # previous release
+sudo lucifer-install rollback lucifer-1.0.0-linux-arm64          # or a named one from list
+sudo lucifer-install rollback --adopt                            # only after a refusal for hand-edited unit files
 ```
 
-Restore the prior package:
+`update` accepts the same `--checksum`, `--target-rid` and `--adopt` options as `install`. Order of events: validate the archive; extract to a hidden staging directory; run the staged release's `lucifer-maint check` against the live configuration **while the service keeps playing** (a rejection aborts with nothing changed); then, under a lock, stop the service only if it was active, install the new unit and tmpfiles snippet, `daemon-reload`, switch `/opt/lucifer/current` atomically (new symlink, then rename), run the check again, and start the service only if it was active before. A service that was inactive stays inactive and an enabled/disabled state is not changed. A hand-edited unit or tmpfiles file is refused unless `--adopt`; `rollback` applies the same refusal, so `sudo lucifer-install rollback --adopt [RELEASE]` replaces edited files and keeps the originals in `/opt/lucifer/backups`.
 
-```sh
-sudo systemctl stop lucifer
-sudo ln -sfn /opt/lucifer/releases/lucifer-1.0.0-linux-arm64 /opt/lucifer/current   # the release noted above
-sudo systemctl start lucifer
-```
+If any step after the stop fails, the previous release link, the exact previous unit and tmpfiles contents (or their absence) are put back, systemd is reloaded, the service is started again if it had been active, and the half-installed release directory is removed (exit 1). The same restoration happens on SIGINT, SIGTERM or SIGHUP, so the same command can be retried at once. A restored tmpfiles snippet is re-applied with `systemd-tmpfiles --create`.
 
-Configuration and the catalogue live outside the release directories and are untouched by either. If the prior unit file differed, reinstall it from the prior release before `daemon-reload`. Remove old releases only after the new one has been accepted.
+### After a crash (SIGKILL, power loss)
+
+The script cannot undo a hard kill, and crash atomicity is not claimed or tested. What a kill before the switch leaves: the old release still current, possibly the new release's unit and tmpfiles files installed, the service possibly stopped, and a `.pending-*` marker. A kill after the switch leaves the new release current and complete (its marker is removed at the switch, so it is never cleaned up as a leftover). Recover like this:
+
+1. `sudo lucifer-install list` shows the current release; `systemctl status lucifer` and `systemctl cat lucifer` show the service and unit.
+2. Retry the **same** `update` (or `install`) archive: the interrupted release directory is recognised by its marker and replaced, stale staging is removed, and the unit already matching the new package is accepted. A different version, or a `rollback`, is refused with exit 3 because the installed unit matches no packaged copy of the current release; add `--adopt` to proceed. This is safe here: `--adopt` stores the unit it replaces in `/opt/lucifer/backups` (the interrupted package's copy, not a hand edit).
+3. The unit and tmpfiles contents from before the interrupted run are kept in `/opt/lucifer/backups/interrupted-*` (the run's `unit` and `tmpfiles` files); copy them back only if you want exactly that older state, then `sudo systemctl daemon-reload`.
+4. The retry does not know the service was running before the kill and will not restart it. If it was playing, run `sudo systemctl start lucifer` afterwards (or `systemctl is-active lucifer` to check).
+
+Releases that completed a switch are never removed by this cleanup; a release directory without an interruption marker is never deleted, and the command tells you to remove it by hand. If the old service cannot be restarted the installer says so; look at `systemctl status lucifer`. Configuration, catalogue, input map and all earlier releases are never modified, and `rollback` uses the same transaction (it installs that release's own unit files). Old releases stay until you delete them from `/opt/lucifer/releases` (never delete the current or previous one).
+
+Manual equivalent if the installer is unavailable: extract the archive to `/opt/lucifer/releases`, stop the service, `ln -sfn` the link, reinstall the unit if it changed, `daemon-reload`, start.
 
 ## 9. Uninstall
 
@@ -162,4 +169,4 @@ sudo rm -rf /etc/lucifer /var/lib/lucifer && sudo userdel lucifer
 
 ## What is and is not proven
 
-Checked on a development machine: the package builds and unpacks, the checksum verifies, the unit passes `systemd-analyze verify` where available, the CI runs build and tests. Not proven: anything on the Pi (architecture choice, native dependencies, boot start, device groups, udev, ALSA name, KillMode=mixed behaviour with a real mpv, update and rollback). CI does not prove hardware.
+Checked on a development machine: the package builds and unpacks, the checksum verifies, `deploy/test-lucifer-install.sh` exercises install, update and rollback in a temporary root with stubbed `systemctl`, `useradd` and friends (stubs are not physical evidence), the unit passes `systemd-analyze verify` where available, the CI runs build and tests. Not proven: anything on the Pi (architecture choice, native dependencies, boot start, device groups, udev, ALSA name, KillMode=mixed behaviour with a real mpv, real installation, update and rollback). CI does not prove hardware.

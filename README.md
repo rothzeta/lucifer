@@ -186,9 +186,11 @@ Not fatal: a long idle period with no tag, transient Navidrome/network/album fai
 
 ## Packaging and installation
 
-`deploy/publish.sh --rid linux-arm64|linux-arm [--version V] [--out dir]` builds a self-contained, versioned archive plus a SHA-256 file. The RID must match the Pi's userland (`dpkg --print-architecture`: `arm64` gives `linux-arm64`, `armhf` gives `linux-arm`), which is not yet recorded (LUC-08). The archive holds `bin/` (app and `lucifer-maint`), `config/` examples, `systemd/`, `udev/`, `VERSION`, `RID` and INSTALL.md.
+`deploy/publish.sh --rid linux-arm64|linux-arm [--version V] [--out dir]` builds a self-contained, versioned archive plus a SHA-256 file. The RID must match the Pi's userland (`dpkg --print-architecture`: `arm64` gives `linux-arm64`, `armhf` gives `linux-arm`), which is not yet recorded (LUC-08). The archive holds `bin/` (app, `lucifer-maint` and `lucifer-install`), `config/` examples, `systemd/`, `udev/`, `VERSION`, `RID` and INSTALL.md.
 
-Create the `lucifer` user, unpack to `/opt/lucifer/releases`, install the env file, catalogue, unit and tmpfiles snippet, run `lucifer-maint check`, then `systemctl enable --now lucifer`. The exact steps, health check, update, roll-back and uninstall are in [docs/install/INSTALL.md](docs/install/INSTALL.md). **Nothing there has been run on a Pi.**
+On the Pi, `sudo lucifer-install install|update|rollback <archive>` (script `deploy/lucifer-install`, packaged as `bin/lucifer-install`) installs a local archive and its `.sha256`, preserves configuration, catalogue, input map and earlier releases, and restores the previous release if an update fails; `lucifer-install list` shows releases. Usage and failure semantics: [INSTALL.md](docs/install/INSTALL.md). Real-Pi installation is unverified; `deploy/test-lucifer-install.sh` covers it with stubs only.
+
+The installer leaves the service stopped until the placeholder password is replaced; then run `lucifer-maint check` and `systemctl enable --now lucifer`. The exact steps, health check, update, roll-back and uninstall are in [docs/install/INSTALL.md](docs/install/INSTALL.md). **Nothing there has been run on a Pi.**
 
 ## Hardware and software inventory
 
