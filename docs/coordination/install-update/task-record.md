@@ -2,11 +2,12 @@
 
 ## Current revision snapshot
 
-- Installer/update feature complete, independently reviewed and locally delivered. Product e2ee0f4a4d7d76fb3b7237fd6ffb5f8cb2371bd2; acceptance ed5ab055c439a81aca9deac03363ed915ff45642. See reports/github-review-v2.md and reports/github-delivery.md.
-- Remote master and immutable v0.1.0 tag point to accepted publication revision 91c264d80208242f304e3b1ab496921a8efb81cc. No GitHub Release/assets exist: the live installer remains blocked at release download. Publication report reports/publication.md records failed existing application tests in release CI; no checks waived.
-- DEC-007 scope correction stops all application-fix work. Partial application commits remain only on ruach/lucifer-publish, most recently 8e016b70c04bde96e31f764c90a796f9ed9fa989; they are unreviewed and must not be integrated or published.
-- Scope stop complete: validated preservation report cccfc316a5cf7e964d6bb63316324851e8edde2b remains on retained branch ruach/lucifer-publish. Worker workspace/session, clean worktree and private launch directory released. No more application testing or release retry authorized by this plan.
-- Retain owner checkout and caller session, source stale pr-1 and unrelated resources. Physical acceptance remains unverified. No privileged installation performed.
+- Reopened by DEC-008, raw owner-command-interface.md: owner accepted GitHub install.sh for installation and `lucifer update` for updates. Replace the separately exposed lucifer-install interface with minimal dispatch/packaging/docs changes, preserving reviewed transactional behavior.
+- Phase: implementation/meaningful isolated verification, followed by independent review and separately assigned local delivery to ruach/lucifer-install-update. Same preferred routes and auto-review, two failed fix cycles maximum. No remote changes in this correction.
+- Start from cb263704b5d17b5b3b202d03f0d437eed6f1612e; previous accepted installer product e2ee0f4 and review ed5ab05 apply only to unchanged behavior. Exact new revision requires checks and review.
+- Prior publication: master and v0.1.0 at 91c264d; no Release/assets, because existing app release tests failed. This external blocker does not block local interface correction. Do not retry release CI, bypass tests or alter tag/version.
+- Stopped application fixes remain only on retained ruach/lucifer-publish at cccfc316; do not import them. Source pr-1/unrelated workspaces/caller pane protected. No privileged host/Pi installation; physical acceptance unverified.
+- All previous specialist resources released. Plan one new Implementer for source investigation, implementation/integration/checks; one independent Reviewer after passing combined checks; reuse Implementer for separately assigned local delivery. Retain owner checkout and task branches/evidence; release specialists promptly.
 
 ## Earlier delivery snapshot (superseded for onboarding by DEC-005)
 
@@ -219,3 +220,9 @@ Resource release planned after validator confirmation: close only lucifer-publis
 WORK-12 mechanically validated: worker confirmed validator exit0/ok:true/no diagnostics against report with --repo, including candidate resolution to 8e016b7, before commit and again after request. No new product actions. Final cleanup confirmed: wK3/session closed, clean lucifer-publish worktree removed with Git from retained Coordinator checkout, exact private launch directory <temporary-root>/ruach-herdr-3xpSWr removed. Branch ruach/lucifer-publish retains cccfc316 and all partial work/report evidence. No active task specialist resources remain. Raw stopped-work logs/pointer intentionally retained as described above; owner checkout/caller session retained by assignment, all unrelated resources protected.
 
 Final disposition under narrowed scope: reviewed installer and update are delivered locally and published on master. Application fixes stopped and preserved separately, never delivered. GitHub Release publication incomplete due existing app CI failures; live one-line install cannot yet finish without release assets. Physical acceptance unverified. Do not claim feature usable against live releases or restart application work on resume without new authority.
+
+## DEC-008: single Lucifer command interface
+
+Raw source owner-command-interface.md records exact owner question, assistant interface proposal and owner "yes it should". Accepted: installation via GitHub Bash install.sh and update via `lucifer update`. Supersedes separate public lucifer-install naming, while preserving existing release-based downloads, configuration/older-release safety and rollback. Minimal command entry-point changes are authorized; playback/shutdown fixes remain stopped. No new remote/version/tag authority inferred.
+
+WORK-13 planned Implementer lucifer-cli-impl: preferred claude-sonnet-5.5-medium auto-review, fresh standalone worktree/branch at this intake commit. Scope product command dispatch and install/package/bootstrap/docs/tests only. Meaningful isolated interface/update/rollback checks plus relevant existing deployment suites; no physical install, no unrelated test repairs or stress campaigns. WORK-14 independent review gated on combined checks; WORK-15 separate local delivery gated on acceptance and frozen target. Coordinator alone owns this record. No ports/profiles/databases needed except isolated temporary fixtures. Launcher standalone topology retained to avoid known unrelated stale parent metadata.
