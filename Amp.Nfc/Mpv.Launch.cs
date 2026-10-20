@@ -146,6 +146,11 @@ public sealed partial class Mpv
             try
             {
                 await attempt.ConnectAndVerifyAsync(Min(timeouts.Connect, remaining), cancellationToken);
+                // The child may have bound its socket after the sample above; the path was clear when
+                // it was launched, so one that is there once we are connected is the child's. Residual
+                // risk: another process replacing the path in this window is indistinguishable here.
+                if (ownership is not null && !ownership.Owned && File.Exists(socketPath))
+                    ownership.Owned = true;
                 attempt.Adopt(child, ownership?.Owned ?? false);
                 return attempt;
             }
