@@ -88,7 +88,7 @@ apiroot="$web/api/repos/test/lucifer/releases"; dlroot="$web/test/lucifer/releas
 mkpkg() { # TAG RID [shell snippet run inside the package dir $w/$n]
   local v="$1" r="$2" n="lucifer-$1-$2" w out
   w="$(mktemp -d -p "$tmp")"; out="$dlroot/download/$v"; mkdir -p "$out"
-  mkdir -p "$w/$n"/{bin,config,systemd,udev}
+  mkdir -p "$w/$n"/{bin,libexec,config,systemd,udev}
   printf '#!/bin/sh\necho amp\n' > "$w/$n/bin/Amp.Nfc"
   cat > "$w/$n/bin/lucifer-maint" <<'M'
 #!/usr/bin/env bash
@@ -97,13 +97,14 @@ echo "maint $* rel=$(basename "$d")" >> "$STUB_STATE/calls"
 [ -e "$d/FAIL_CHECK" ] && { echo "bad config" >&2; exit 2; }
 exit 0
 M
-  cp "$installer" "$w/$n/bin/lucifer-install"
+  cp "$installer" "$w/$n/libexec/lucifer-install"
+  cp "$here/lucifer" "$w/$n/bin/lucifer"
   printf 'NAVIDROME_PASSWORD=change-me\n' > "$w/$n/config/lucifer.env.example"
   echo '{}' > "$w/$n/config/catalogue.example.json"
   printf '[Service]\n# unit %s\n' "$v" > "$w/$n/systemd/lucifer.service"
   printf '# tmpfiles %s\n' "$v" > "$w/$n/systemd/lucifer.tmpfiles.conf"
   echo "$v" > "$w/$n/VERSION"; echo "$r" > "$w/$n/RID"
-  chmod 0755 "$w/$n/bin/"*
+  chmod 0755 "$w/$n/bin/"* "$w/$n/libexec/"*
   [ -z "${3:-}" ] || eval "$3"
   tar --sort=name --owner=0 --group=0 --numeric-owner -C "$w" -cf - "$n" | gzip -n > "$out/$n.tar.gz"
   (cd "$out" && sha256sum "$n.tar.gz" > "$n.tar.gz.sha256")
@@ -237,9 +238,10 @@ ok "failures leave the host untouched"
 # ============ 4. installed update without an archive ==========================
 reset_web; mkrelease v1.0.0 linux-arm64; mkrelease v1.1.0 --latest linux-arm64
 fresh; piped --version v1.0.0; check "setup install v1.0.0" [ $rc = 0 ]
+check "install.sh leaves the lucifer command and no public lucifer-install" bash -c '[ "$(readlink "$1/usr/local/bin/lucifer")" = /opt/lucifer/current/bin/lucifer ] && [ ! -e "$1/usr/local/sbin/lucifer-install" ] && [ ! -L "$1/usr/local/sbin/lucifer-install" ]' _ "$R"
 printf 'NAVIDROME_PASSWORD=SECRETPW\nLUCIFER_X=1\n' > "$R/etc/lucifer/lucifer.env"; echo '{"mine":1}' > "$R/var/lib/lucifer/catalogue.json"
 envsum="$(sha256sum "$R/etc/lucifer/lucifer.env")"; catsum="$(sha256sum "$R/var/lib/lucifer/catalogue.json")"
-inst="$(OPT)/current/bin/lucifer-install"
+inst="$(OPT)/current/bin/lucifer"  # the installed command, not the engine
 # inactive service stays inactive
 run "$inst" update; check "no-archive update (inactive) exit 0" [ $rc = 0 ]
 check "updated to latest" [ "$(cur)" = lucifer-v1.1.0-linux-arm64 ]
@@ -302,7 +304,8 @@ check "publish.sh archive name template" grep -q 'name="lucifer-$version-$rid"' 
 check "installer expects lucifer-<tag>-<rid>.tar.gz" grep -q 'name="lucifer-$tag-$rid.tar.gz"' "$installer"
 check "bootstrap fetches lucifer-install(+.sha256)" bash -c 'grep -q "^ *get lucifer-install$" "$1" && grep -q "^ *get lucifer-install.sha256$" "$1"' _ "$bootstrap"
 check "workflow installer asset is the packaged script" grep -q 'cp deploy/lucifer-install dist/lucifer-install' "$wf"
-check "publish.sh packages the same script" grep -q 'cp deploy/lucifer-install "$stage/bin/lucifer-install"' "$here/publish.sh"
+check "publish.sh packages the launcher" grep -q 'cp deploy/lucifer "$stage/bin/lucifer"' "$here/publish.sh"
+check "publish.sh packages the same engine" grep -q 'cp deploy/lucifer-install "$stage/libexec/lucifer-install"' "$here/publish.sh"
 ok "workflow contract (static; the workflow itself has not been run)"
 
 

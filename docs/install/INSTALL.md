@@ -21,17 +21,17 @@ curl -fsSL https://raw.githubusercontent.com/rothzeta/lucifer/master/install.sh 
 curl -fsSL https://raw.githubusercontent.com/rothzeta/lucifer/master/install.sh | sudo bash -s -- --help
 ```
 
-`install.sh` is self-contained (it works on stdin). If the download is cut off, the partial script refuses to run and changes nothing, so your options are never silently dropped. It downloads the release's `lucifer-install` and `lucifer-install.sha256` over HTTPS into a private temporary directory, checks the checksum, and runs `lucifer-install install`, which resolves the latest stable release (or `--version TAG`; prereleases are never "latest"), picks the archive for this host's userland RID from `dpkg --print-architecture` (not the kernel), downloads it with its `.sha256`, and then validates and installs it with the transaction described in section 3. Options after `--` are `--version TAG`, `--start`, `--adopt`, `--target-rid RID`. `LUCIFER_REPO=owner/name` selects another repository; sudo drops environment variables, so write `curl -fsSL <URL> | sudo env LUCIFER_REPO=owner/name bash` and repeat it for later updates (`sudo env LUCIFER_REPO=owner/name lucifer-install update`). Every download and every redirect must be HTTPS; a redirect to plain http is refused. A missing release or asset, a rate-limit or access error, a failed or truncated download, a checksum or RID mismatch, or an unsafe package stops with a message before the account, directories, unit or service are touched. The checksum detects corruption only; it does not authenticate the publisher, and running a script from the network trusts GitHub and the repository owner. The installer is a bash script that has to run before the archive can be validated, so it is itself fetched from the release and checksum-verified first.
+`install.sh` is self-contained (it works on stdin). If the download is cut off, the partial script refuses to run and changes nothing, so your options are never silently dropped. It downloads the release's installer engine (`lucifer-install` and `lucifer-install.sha256`; a private helper, not a command you run) over HTTPS into a private temporary directory, checks the checksum, and runs its `install` step, which resolves the latest stable release (or `--version TAG`; prereleases are never "latest"), picks the archive for this host's userland RID from `dpkg --print-architecture` (not the kernel), downloads it with its `.sha256`, and then validates and installs it with the transaction described in section 3. Options after `--` are `--version TAG`, `--start`, `--adopt`, `--target-rid RID`. `LUCIFER_REPO=owner/name` selects another repository; sudo drops environment variables, so write `curl -fsSL <URL> | sudo env LUCIFER_REPO=owner/name bash` and repeat it for later updates (`sudo env LUCIFER_REPO=owner/name lucifer update`). Every download and every redirect must be HTTPS; a redirect to plain http is refused. A missing release or asset, a rate-limit or access error, a failed or truncated download, a checksum or RID mismatch, or an unsafe package stops with a message before the account, directories, unit or service are touched. The checksum detects corruption only; it does not authenticate the publisher, and running a script from the network trusts GitHub and the repository owner. The engine is a bash script that has to run before the archive can be validated, so it is itself fetched from the release and checksum-verified first. After installation `lucifer update` runs the copy packaged inside the installed release.
 
 Defaults: the service is neither enabled nor started and the generated `/etc/lucifer/lucifer.env` holds the placeholder password, so there is no restart loop; edit it and follow the printed next steps (section 3).
 
 Later updates need no archive and no new command:
 
 ```sh
-sudo lucifer-install update                  # latest stable release
-sudo lucifer-install update --version v1.3.0
-sudo lucifer-install list
-sudo lucifer-install rollback                # previous release
+sudo lucifer update                  # latest stable release
+sudo lucifer update --version v1.3.0
+sudo lucifer list
+sudo lucifer rollback                # previous release
 ```
 
 `update` does nothing when the selected release is already current. Offline use is unchanged: pass a local archive (sections 1 and 8).
@@ -44,7 +44,7 @@ Needs the .NET 10 SDK and network or a populated NuGet cache for the runtime pac
 deploy/publish.sh --rid linux-arm64 --version 1.0.0   # or --rid linux-arm
 ```
 
-Output in `dist/`: `lucifer-<version>-<rid>.tar.gz` and `lucifer-<version>-<rid>.tar.gz.sha256`. The archive contains `bin/` (self-contained app plus `lucifer-maint` and `lucifer-install`), `config/` (env, catalogue and input-map examples), `systemd/`, `udev/`, `VERSION`, `RID` and this file. Without `--version` the name comes from `git describe`.
+Output in `dist/`: `lucifer-<version>-<rid>.tar.gz` and `lucifer-<version>-<rid>.tar.gz.sha256`. The archive contains `bin/` (self-contained app plus the `lucifer` command and `lucifer-maint`), `libexec/lucifer-install` (private engine), `config/` (env, catalogue and input-map examples), `systemd/`, `udev/`, `VERSION`, `RID` and this file. Without `--version` the name comes from `git describe`.
 
 Copy both files to the Pi (for example with `scp`).
 
@@ -61,11 +61,11 @@ A source-only repository cannot satisfy `install.sh`: it needs a published relea
 
 ## 3. First install (UNVERIFIED-ON-DEVICE)
 
-The package carries `bin/lucifer-install`. Unpack it once to run the installer, or run it from a checkout (`deploy/lucifer-install`). With an archive argument (offline mode) it needs root, the archive, and the `.sha256` file beside it, and nothing is downloaded; without one it downloads the release as in section 0.
+The normal installation is `install.sh` (section 0). For an offline first installation the package carries the private engine as `libexec/lucifer-install`: unpack the archive once, or run it from a checkout (`deploy/lucifer-install`). With an archive argument (offline mode) it needs root, the archive, and the `.sha256` file beside it, and nothing is downloaded; without one it downloads the release as in section 0.
 
 ```sh
 sudo deploy/lucifer-install install lucifer-1.0.0-linux-arm64.tar.gz
-# or, from an unpacked archive:  sudo lucifer-1.0.0-linux-arm64/bin/lucifer-install install lucifer-1.0.0-linux-arm64.tar.gz
+# or, from an unpacked archive:  sudo lucifer-1.0.0-linux-arm64/libexec/lucifer-install install lucifer-1.0.0-linux-arm64.tar.gz
 ```
 
 It first copies the archive and checksum file to a private root-only temporary snapshot (`TMPDIR`, default `/var/tmp`; allow about twice the unpacked size free) and does everything else from that copy, so replacing the files you passed afterwards changes nothing. Before changing the host it verifies the checksum (corruption detection only; it does not prove who published the archive, so obtain archive and checksum over a trusted channel), that the archive's RID matches this host's userland (`dpkg --print-architecture`; override with `--target-rid`), and that every member is a plain file or directory inside the single `lucifer-<version>-<rid>/` directory (no links, devices, absolute or `..` paths) with the expected entry points, and it extracts the snapshot once, so a damaged or over-long-named archive is rejected before any account, directory or unit is touched. Then it:
@@ -74,7 +74,7 @@ It first copies the archive and checksum file to a private root-only temporary s
 - extracts to `/opt/lucifer/releases/lucifer-<version>-<rid>` (owned by root) and points `/opt/lucifer/current` at it;
 - installs `/etc/systemd/system/lucifer.service` and `/etc/tmpfiles.d/lucifer.conf` and reloads systemd;
 - creates `/etc/lucifer/lucifer.env` (root:lucifer 0640) and `/var/lib/lucifer/catalogue.json` only when missing; existing ones are kept byte for byte (the env file mode is tightened to 0640 root:lucifer);
-- links `/usr/local/sbin/lucifer-install` to the current release, so later commands are `sudo lucifer-install ...`.
+- links `/usr/local/bin/lucifer` to the current release's `bin/lucifer`, so later commands are `sudo lucifer update|rollback|list`. Only a link this installer made is ever created, kept or retired: `/usr/local/sbin/lucifer-install` from releases before `lucifer update` is removed when it points at `/opt/lucifer/current/bin/lucifer-install`, and any other file or link there (or at `/usr/local/bin/lucifer`) is left alone with a warning. Rolling back to a release that predates the `lucifer` command restores that old link and removes the `lucifer` link, so the helper that exists is always the one linked.
 
 It does **not** start or enable the service. The new env file holds the placeholder password, so edit it first, check it, then enable:
 
@@ -161,16 +161,16 @@ If the service is running, the maintenance run is refused with an error naming t
 ## 8. Update and roll back (UNVERIFIED-ON-DEVICE)
 
 ```sh
-sudo lucifer-install update                                      # download the latest stable release
-sudo lucifer-install update --version v1.1.0                     # or a named release
-sudo lucifer-install update lucifer-1.1.0-linux-arm64.tar.gz     # offline: local archive, checksum file beside it
-sudo lucifer-install list                                        # releases, current marked *
-sudo lucifer-install rollback                                    # previous release
-sudo lucifer-install rollback lucifer-1.0.0-linux-arm64          # or a named one from list
-sudo lucifer-install rollback --adopt                            # only after a refusal for hand-edited unit files
+sudo lucifer update                                      # download the latest stable release
+sudo lucifer update --version v1.1.0                     # or a named release
+sudo lucifer update lucifer-1.1.0-linux-arm64.tar.gz     # offline: local archive, checksum file beside it
+sudo lucifer list                                        # releases, current marked *
+sudo lucifer rollback                                    # previous release
+sudo lucifer rollback lucifer-1.0.0-linux-arm64          # or a named one from list
+sudo lucifer rollback --adopt                            # only after a refusal for hand-edited unit files
 ```
 
-`update` accepts the same `--checksum`, `--target-rid` and `--adopt` options as `install`. Order of events: validate the archive; extract to a hidden staging directory; run the staged release's `lucifer-maint check` against the live configuration **while the service keeps playing** (a rejection aborts with nothing changed); then, under a lock, stop the service only if it was active, install the new unit and tmpfiles snippet, `daemon-reload`, switch `/opt/lucifer/current` atomically (new symlink, then rename), run the check again, and start the service only if it was active before. A service that was inactive stays inactive and an enabled/disabled state is not changed. A hand-edited unit or tmpfiles file is refused unless `--adopt`; `rollback` applies the same refusal, so `sudo lucifer-install rollback --adopt [RELEASE]` replaces edited files and keeps the originals in `/opt/lucifer/backups`.
+`lucifer update` selects the latest stable release unless `--version TAG` or a local archive is given, needs root, reads no configuration and neither starts the service nor touches audio or the reader unless the service was already active (then it is restarted as described below); it exits 0 on success or when already current, 1 on failure (host restored), 2 for usage errors and 3 when refused because of the installation state. `update` accepts the same `--checksum`, `--target-rid` and `--adopt` options as `install`. Order of events: validate the archive; extract to a hidden staging directory; run the staged release's `lucifer-maint check` against the live configuration **while the service keeps playing** (a rejection aborts with nothing changed); then, under a lock, stop the service only if it was active, install the new unit and tmpfiles snippet, `daemon-reload`, switch `/opt/lucifer/current` atomically (new symlink, then rename), run the check again, and start the service only if it was active before. A service that was inactive stays inactive and an enabled/disabled state is not changed. A hand-edited unit or tmpfiles file is refused unless `--adopt`; `rollback` applies the same refusal, so `sudo lucifer rollback --adopt [RELEASE]` replaces edited files and keeps the originals in `/opt/lucifer/backups`.
 
 If any step after the stop fails, the previous release link, the exact previous unit and tmpfiles contents (or their absence) are put back, systemd is reloaded, the service is started again if it had been active, and the half-installed release directory is removed (exit 1). The same restoration happens on SIGINT, SIGTERM or SIGHUP, so the same command can be retried at once. A restored tmpfiles snippet is re-applied with `systemd-tmpfiles --create`.
 
@@ -178,7 +178,7 @@ If any step after the stop fails, the previous release link, the exact previous 
 
 The script cannot undo a hard kill, and crash atomicity is not claimed or tested. What a kill before the switch leaves: the old release still current, possibly the new release's unit and tmpfiles files installed, the service possibly stopped, and a `.pending-*` marker. A kill after the switch leaves the new release current and complete (its marker is removed at the switch, so it is never cleaned up as a leftover). Recover like this:
 
-1. `sudo lucifer-install list` shows the current release; `systemctl status lucifer` and `systemctl cat lucifer` show the service and unit.
+1. `sudo lucifer list` shows the current release; `systemctl status lucifer` and `systemctl cat lucifer` show the service and unit.
 2. Retry the **same** `update` (or `install`) archive: the interrupted release directory is recognised by its marker and replaced, stale staging is removed, and the unit already matching the new package is accepted. A different version, or a `rollback`, is refused with exit 3 because the installed unit matches no packaged copy of the current release; add `--adopt` to proceed. This is safe here: `--adopt` stores the unit it replaces in `/opt/lucifer/backups` (the interrupted package's copy, not a hand edit).
 3. The unit and tmpfiles contents from before the interrupted run are kept in `/opt/lucifer/backups/interrupted-*` (the run's `unit` and `tmpfiles` files); copy them back only if you want exactly that older state, then `sudo systemctl daemon-reload`.
 4. The retry does not know the service was running before the kill and will not restart it. If it was playing, run `sudo systemctl start lucifer` afterwards (or `systemctl is-active lucifer` to check).

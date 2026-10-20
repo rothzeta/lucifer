@@ -24,7 +24,9 @@ jobs:
         run: dotnet test
       - name: lucifer-maint reads the env file literally
         run: deploy/test-lucifer-maint.sh
-      - name: lucifer-install in an isolated root
+      - name: lucifer command dispatch
+        run: deploy/test-lucifer-command.sh
+      - name: lucifer update, rollback and the installer engine in an isolated root
         run: deploy/test-lucifer-install.sh
       - name: install.sh and no-archive updates against a local fake GitHub
         run: deploy/test-lucifer-bootstrap.sh
@@ -34,5 +36,6 @@ jobs:
           deploy/publish.sh --rid linux-arm --version ci --out dist
           (cd dist && sha256sum -c ./*.sha256)
           for rid in linux-arm64 linux-arm; do
-            tar -tzf "dist/lucifer-ci-$rid.tar.gz" | grep -qx "lucifer-ci-$rid/bin/lucifer-install"
+            tar -tzf "dist/lucifer-ci-$rid.tar.gz" | grep -qx "lucifer-ci-$rid/bin/lucifer"
+            tar -tzf "dist/lucifer-ci-$rid.tar.gz" | grep -qx "lucifer-ci-$rid/libexec/lucifer-install"
           done

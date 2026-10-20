@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
-# Install, update and roll back Lucifer from GitHub Releases or a local archive.
+# Private transactional engine behind install.sh and `lucifer update`; it is not
+# on PATH. Users run:
 #
-#   sudo lucifer-install install  [--start] [--adopt] [--version TAG] [--target-rid RID]
-#   sudo lucifer-install update   [--adopt] [--version TAG] [--target-rid RID]
-#   sudo lucifer-install install  [--start] [--adopt] [--checksum FILE] [--target-rid RID] ARCHIVE
-#   sudo lucifer-install update   [--adopt] [--checksum FILE] [--target-rid RID] ARCHIVE
-#   sudo lucifer-install rollback [--adopt] [RELEASE]
-#   lucifer-install list
+#   curl -fsSL <raw install.sh URL> | sudo bash     (first installation)
+#   sudo lucifer update   [--adopt] [--version TAG] [--target-rid RID]
+#   sudo lucifer update   [--adopt] [--checksum FILE] [--target-rid RID] ARCHIVE
+#   sudo lucifer rollback [--adopt] [RELEASE]
+#   lucifer list
+#
+# install.sh runs the same engine as `install [--start] [--adopt] [--version TAG]
+# [--target-rid RID] [--checksum FILE] [ARCHIVE]`.
 #
 # Without ARCHIVE the prebuilt release is downloaded over HTTPS from the GitHub
 # repository $LUCIFER_REPO (default rothzeta/lucifer): the latest stable release,
@@ -14,7 +17,7 @@
 # (derived from `dpkg --print-architecture`) and its .sha256 are fetched into a
 # private temporary directory and then go through exactly the same validation and
 # transaction as a local archive. Every URL and redirect must be HTTPS. sudo drops
-# environment variables: use `sudo env LUCIFER_REPO=owner/name lucifer-install update`
+# environment variables: use `sudo env LUCIFER_REPO=owner/name lucifer update`
 # for another repository. Nothing is built locally. update does nothing
 # when that release is already current.
 #
@@ -24,7 +27,7 @@
 # The checksum detects corruption only: it does not authenticate the publisher.
 # Run as root (or via sudo).
 #
-# install   First installation. Refused when /opt/lucifer/current exists (use
+# install   (install.sh) First installation. Refused when /opt/lucifer/current exists (use
 #           update). Creates the lucifer account and directories, installs the
 #           release, the systemd unit and tmpfiles snippet, and creates the
 #           missing /etc/lucifer/lucifer.env and /var/lib/lucifer/catalogue.json
@@ -48,7 +51,7 @@
 # Limits: the archive is copied to a private temporary snapshot (TMPDIR or
 # /var/tmp, roughly twice the unpacked size free) and verified, listed and
 # extracted from that copy only. INT, TERM and HUP restore the previous state;
-# SIGKILL or power loss cannot be undone in-process: check `lucifer-install
+# SIGKILL or power loss cannot be undone in-process: check `lucifer
 # list` and `systemctl status lucifer`, and the next run removes the
 # interrupted release directory by itself.
 #
@@ -79,16 +82,17 @@ VAR_DIR="$ROOT/var/lib/lucifer"
 CATALOGUE="$VAR_DIR/catalogue.json"
 UNIT="$ROOT/etc/systemd/system/lucifer.service"
 TMPFILES="$ROOT/etc/tmpfiles.d/lucifer.conf"
-SBIN_LINK="$ROOT/usr/local/sbin/lucifer-install"
+BIN_LINK="$ROOT/usr/local/bin/lucifer"
+OLD_SBIN_LINK="$ROOT/usr/local/sbin/lucifer-install"  # public helper of releases before `lucifer update`
 SETTLE="${LUCIFER_INSTALL_SETTLE_SECONDS:-3}"
 REPO="${LUCIFER_REPO:-rothzeta/lucifer}"
 GH_API="${LUCIFER_GITHUB_API:-https://api.github.com}"
 GH_DL="${LUCIFER_GITHUB_DOWNLOAD:-https://github.com}"
 
 usage() { sed -n '2,/^set -euo/{/^set -euo/!p}' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
-die() { local code="$1"; shift; echo "lucifer-install: $*" >&2; exit "$code"; }
-say() { echo "lucifer-install: $*"; }
-warn() { echo "lucifer-install: warning: $*" >&2; }
+die() { local code="$1"; shift; echo "lucifer: $*" >&2; exit "$code"; }
+say() { echo "lucifer: $*"; }
+warn() { echo "lucifer: warning: $*" >&2; }
 
 # -- archive validation (no host effects) ------------------------------------
 
@@ -157,7 +161,7 @@ validate_archive() {
     case "${line:0:1}" in -|d) ;; *) die 1 "archive contains a link or special file; refused" ;; esac
   done <<<"$types"
   local m
-  for m in VERSION RID bin/Amp.Nfc bin/lucifer-maint bin/lucifer-install config/lucifer.env.example \
+  for m in VERSION RID bin/Amp.Nfc bin/lucifer-maint bin/lucifer libexec/lucifer-install config/lucifer.env.example \
            config/catalogue.example.json systemd/lucifer.service systemd/lucifer.tmpfiles.conf; do
     grep -qxF "$top/$m" <<<"$names" || die 1 "archive lacks $m"
   done
@@ -171,7 +175,8 @@ validate_archive() {
   [ -z "$(find "$pkg" ! -type f ! -type d -print -quit)" ] || die 1 "archive extracted to something other than files and directories"
   [ "$(head -c 200 "$pkg/$top/VERSION" | tr -d '\n')" = "$version" ] || die 1 "VERSION in archive does not match its name"
   [ "$(head -c 200 "$pkg/$top/RID" | tr -d '\n')" = "$rid" ] || die 1 "RID in archive does not match its name"
-  [ -x "$pkg/$top/bin/Amp.Nfc" ] && [ -x "$pkg/$top/bin/lucifer-maint" ] && [ -x "$pkg/$top/bin/lucifer-install" ] \
+  [ -x "$pkg/$top/bin/Amp.Nfc" ] && [ -x "$pkg/$top/bin/lucifer-maint" ] && [ -x "$pkg/$top/bin/lucifer" ] \
+    && [ -x "$pkg/$top/libexec/lucifer-install" ] \
     || die 1 "archive entry points are not executable"
 }
 
@@ -262,7 +267,7 @@ require_root() {
 take_lock() {
   mkdir -p "$OPT"
   exec 9>"$OPT/.lock"
-  flock -n 9 || die 1 "another lucifer-install is running"
+  flock -n 9 || die 1 "another lucifer is running"
 }
 
 # True when the file is missing or its password is absent, blank or the shipped
@@ -301,7 +306,7 @@ ensure_account() {
 }
 
 ensure_dirs() {
-  mkdir -p "$RELEASES" "$BACKUPS" "$ETC_DIR" "$VAR_DIR" "$(dirname "$UNIT")" "$(dirname "$TMPFILES")" "$(dirname "$SBIN_LINK")"
+  mkdir -p "$RELEASES" "$BACKUPS" "$ETC_DIR" "$VAR_DIR" "$(dirname "$UNIT")" "$(dirname "$TMPFILES")" "$(dirname "$BIN_LINK")"
   chmod 0755 "$OPT" "$RELEASES"; chmod 0700 "$BACKUPS"; own root:root "$OPT" "$RELEASES" "$BACKUPS"
   chmod 0750 "$ETC_DIR"; own "root:$SERVICE_USER" "$ETC_DIR"
   chmod 0750 "$VAR_DIR"; own "$SERVICE_USER:$SERVICE_USER" "$VAR_DIR"
@@ -385,7 +390,7 @@ check_config_as_service() {
 # -- transactional activation -----------------------------------------------------
 
 txn=""; txn_open=0
-prev_target="" prev_previous="" was_active=0 was_enabled=0 txn_enabled=0 txn_started=0 had_unit=0 had_tmpfiles=0 had_sbin=0 had_previous=0
+prev_target="" prev_previous="" was_active=0 was_enabled=0 txn_enabled=0 txn_started=0 had_unit=0 had_tmpfiles=0 had_previous=0
 
 txn_begin() {
   txn="$(mktemp -d "$OPT/.txn.XXXXXX")"
@@ -394,7 +399,6 @@ txn_begin() {
   [ -n "$prev_previous" ] && had_previous=1 || had_previous=0
   if [ -f "$UNIT" ]; then had_unit=1; cp -p "$UNIT" "$txn/unit"; fi
   if [ -f "$TMPFILES" ]; then had_tmpfiles=1; cp -p "$TMPFILES" "$txn/tmpfiles"; fi
-  if [ -L "$SBIN_LINK" ] || [ -e "$SBIN_LINK" ]; then had_sbin=1; fi
   if svc_active; then was_active=1; else was_active=0; fi
   if svc_enabled; then was_enabled=1; else was_enabled=0; fi
   txn_enabled=0 txn_started=0
@@ -429,7 +433,6 @@ txn_restore() {
   else
     rm -f "$TMPFILES"
   fi
-  [ "$had_sbin" = 1 ] || rm -f "$SBIN_LINK"
   systemctl daemon-reload || true
   if [ "$was_active" = 1 ]; then
     systemctl start lucifer || warn "previous release could not be restarted; check: systemctl status lucifer"
@@ -500,15 +503,23 @@ activate() {
   fi
   txn_commit
   trap - INT TERM HUP
-  ensure_sbin_link
+  ensure_links
   return 0
 }
 
-ensure_sbin_link() {
-  if [ -L "$SBIN_LINK" ] || [ ! -e "$SBIN_LINK" ]; then
-    ln -sfn /opt/lucifer/current/bin/lucifer-install "$SBIN_LINK"
-  else
-    warn "$SBIN_LINK exists and is not a link; leaving it. Use /opt/lucifer/current/bin/lucifer-install"
+# Only a link this installer made (exact target) is created, kept or retired;
+# any other file or link at these paths is the operator's and is left alone.
+ensure_links() {
+  local want_new=/opt/lucifer/current/bin/lucifer old=/opt/lucifer/current/bin/lucifer-install
+  if [ -x "$CURRENT/bin/lucifer" ]; then
+    if [ ! -e "$BIN_LINK" ] && [ ! -L "$BIN_LINK" ]; then ln -s "$want_new" "$BIN_LINK"
+    elif [ "$(readlink "$BIN_LINK" 2>/dev/null || true)" != "$want_new" ]; then
+      warn "$BIN_LINK exists and is not ours; leaving it. Use $want_new"
+    fi
+    if [ "$(readlink "$OLD_SBIN_LINK" 2>/dev/null || true)" = "$old" ]; then rm -f "$OLD_SBIN_LINK"; fi
+  else # rolled back to a release that predates the lucifer command
+    if [ ! -e "$OLD_SBIN_LINK" ] && [ ! -L "$OLD_SBIN_LINK" ]; then ln -s "$old" "$OLD_SBIN_LINK"; fi
+    if [ "$(readlink "$BIN_LINK" 2>/dev/null || true)" = "$want_new" ]; then rm -f "$BIN_LINK"; fi
   fi
 }
 
@@ -558,7 +569,7 @@ cmd_install() {
   fi
   take_lock
   if [ -e "$CURRENT" ] || [ -L "$CURRENT" ]; then
-    die 3 "$CURRENT already exists: use 'lucifer-install update' (a manual installation must be moved aside first)"
+    die 3 "$CURRENT already exists: use 'lucifer update' (a manual installation must be moved aside first)"
   fi
   guard_manual_files "$pkg/$top" "$adopt"
   # The package is verified and extracted privately; only now change the host.
@@ -617,7 +628,7 @@ cmd_update() {
     die 1 "update failed; the previous release was restored"
   fi
   commit_new_release
-  say "updated to release $version ($rid); previous release kept (rollback: lucifer-install rollback)"
+  say "updated to release $version ($rid); previous release kept (rollback: lucifer rollback)"
 }
 
 cmd_rollback() {
@@ -635,7 +646,7 @@ cmd_rollback() {
   take_lock
   [ -L "$CURRENT" ] || die 3 "no managed installation at $CURRENT (it disappeared while waiting for the lock)"
   if [ -z "$target" ]; then
-    [ -L "$PREVIOUS" ] || die 3 "no previous release recorded; name one (see: lucifer-install list)"
+    [ -L "$PREVIOUS" ] || die 3 "no previous release recorded; name one (see: lucifer list)"
     target="$(release_name "$PREVIOUS")"
   fi
   [[ "$target" =~ ^lucifer-[A-Za-z0-9][A-Za-z0-9._+-]*$ ]] || die 2 "invalid release name: $target"
@@ -666,7 +677,7 @@ main() {
     rollback) cmd_rollback "$@" ;;
     list) cmd_list "$@" ;;
     -h|--help|help) usage ;;
-    *) echo "lucifer-install: unknown command: $cmd" >&2; usage >&2; exit 2 ;;
+    *) echo "lucifer: unknown command: $cmd" >&2; usage >&2; exit 2 ;;
   esac
 }
 

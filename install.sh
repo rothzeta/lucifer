@@ -5,9 +5,9 @@
 #   curl -fsSL https://raw.githubusercontent.com/rothzeta/lucifer/master/install.sh | sudo bash -s -- --version v1.2.3
 #   curl -fsSL .../install.sh | sudo bash -s -- --help
 #
-# It downloads the release's lucifer-install (the transactional installer that is
-# also packaged as bin/lucifer-install), checks it against the release's
-# lucifer-install.sha256, and runs `lucifer-install install [ARGS]`. That installer
+# It downloads the release's lucifer-install (the private transactional engine that is
+# also packaged as libexec/lucifer-install and run by `lucifer update`), checks it against the release's
+# lucifer-install.sha256, and runs `lucifer-install install [ARGS]`. That engine
 # downloads the prebuilt archive for this host's userland RID (latest stable
 # release, or --version TAG), validates it and installs it exactly as documented
 # in docs/install/INSTALL.md. Nothing is built here, and the service is not
@@ -16,7 +16,7 @@
 # Arguments are passed to `lucifer-install install` (--version TAG, --start,
 # --adopt, --target-rid RID). Environment: LUCIFER_REPO (default rothzeta/lucifer);
 # sudo drops it, so put it after sudo: `curl -fsSL URL | sudo env LUCIFER_REPO=owner/name bash`
-# (and again for later `sudo env LUCIFER_REPO=owner/name lucifer-install update`).
+# (and again for later `sudo env LUCIFER_REPO=owner/name lucifer update`).
 # The checksum detects corruption only; it does not authenticate the publisher.
 # The script is self-contained and never reads its own file, so it works on stdin.
 # Everything runs inside main(), which is invoked by the very last line together
@@ -36,7 +36,7 @@ usage: curl -fsSL <raw install.sh URL> | sudo bash -s -- [--version TAG] [--star
 
 Installs the latest stable Lucifer release (or release TAG) from GitHub Releases
 for this host's userland (linux-arm64 or linux-arm). Run as root, e.g. through
-sudo. Updates later: sudo lucifer-install update [--version TAG]
+sudo. Updates later: sudo lucifer update [--version TAG]
 USAGE
 }
 die() { echo "install.sh: $*" >&2; exit "${2:-1}"; }
