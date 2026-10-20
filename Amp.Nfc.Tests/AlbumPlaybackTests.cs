@@ -24,6 +24,10 @@ public class AlbumPlaybackTests : IDisposable
         Reply: TimeSpan.FromMilliseconds(300),
         StreamStart: TimeSpan.FromMilliseconds(400));
 
+    // Normal replies get the production allowance so a slow scheduler cannot fail rig setup; only the
+    // explicit reply-deadline test uses Fast.
+    private static readonly MpvTimeouts Normal = Fast with { Reply = TimeSpan.FromSeconds(5) };
+
     private readonly string _dir = Path.Combine("/tmp", "lp-" + Guid.NewGuid().ToString("N")[..8]);
     private readonly List<IDisposable> _disposables = [];
 
@@ -130,7 +134,7 @@ public class AlbumPlaybackTests : IDisposable
 
         var peer = new FakeMpvPeer(Path.Combine(_dir, "m.sock"));
         _disposables.Add(peer);
-        var mpv = await Mpv.ConnectAsync(peer.Path, timeouts ?? Fast, TimeSpan.FromSeconds(2), CancellationToken.None);
+        var mpv = await Mpv.ConnectAsync(peer.Path, timeouts ?? Normal, TimeSpan.FromSeconds(2), CancellationToken.None);
         _disposables.Add(mpv);
 
         var stub = new Http(http ?? ((id, _) => Task.FromResult(id switch
@@ -375,7 +379,7 @@ public class AlbumPlaybackTests : IDisposable
     [Fact]
     public async Task Uncertain_outcome_is_reconciled_before_any_new_load_and_never_replayed_blindly()
     {
-        var rig = await BuildAsync();
+        var rig = await BuildAsync(timeouts: Fast);
         var drop = true;
         var inner = rig.Peer.Handler!;
         rig.Peer.Handler = async (req, conn) =>
@@ -575,7 +579,7 @@ public class AlbumPlaybackTests : IDisposable
         await Task.Delay(100);
         Assert.False(transport.IsCompleted);
         go.SetResult();
-        await transport;
+        Assert.Equal(TransportOutcome.Applied, await transport);
         await rig.Controller.WhenIdleAsync();
 
         var requests = rig.Peer.Requests.ToList();
