@@ -486,6 +486,45 @@ public class MpvTests : IDisposable
         peer!.Dispose();
     }
 
+    // Two threads dispose at once (shutdown deadline hooks vs the run unwinding). Each must see the
+    // child gone and the socket removed when its own Dispose returns, not only the first caller.
+    [Fact]
+    public async Task Concurrent_dispose_returns_to_every_caller_only_after_the_child_and_socket_are_released()
+    {
+        var deadline = Stopwatch.StartNew();
+        for (var round = 0; round < 50 && deadline.Elapsed < TimeSpan.FromSeconds(30); round++)
+        {
+            var pidFile = Path.Combine(_dir, $"pid{round}");
+            var mpvPath = Script($"ok{round}.sh", $"echo $$ > {pidFile}\nexec sleep 30");
+            FakeMpvPeer? peer = null;
+            var late = Task.Run(async () =>
+            {
+                await ReadPid(pidFile);
+                peer = new FakeMpvPeer(Socket);
+            });
+            var mpv = await Mpv.StartAsync(mpvPath, Socket, "null", TimeSpan.FromSeconds(5), CancellationToken.None, Fast);
+            await late;
+            var pid = await ReadPid(pidFile);
+            Assert.True(Alive(pid));
+
+            using var barrier = new Barrier(2);
+            var callers = Enumerable.Range(0, 2).Select(_ => Task.Run(() =>
+            {
+                barrier.SignalAndWait();
+                mpv.Dispose();
+                return (Alive: Alive(pid), SocketExists: File.Exists(Socket));
+            })).ToArray();
+            var results = await Task.WhenAll(callers);
+            peer!.Dispose();
+
+            Assert.All(results, r =>
+            {
+                Assert.False(r.Alive, $"round {round}: child still alive after Dispose returned");
+                Assert.False(r.SocketExists, $"round {round}: socket still present after Dispose returned");
+            });
+        }
+    }
+
     [Fact]
     public async Task Child_exit_after_startup_fails_the_player_status()
     {

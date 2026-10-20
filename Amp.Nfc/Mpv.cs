@@ -25,6 +25,8 @@ public sealed partial class Mpv : IDisposable
     private Process? _child;
     private bool _ownsSocket;
     private bool _disposed;
+    private readonly object _teardown = new();
+    private bool _tornDown;
     private MpvException? _lost;
     private long _nextId;
 
@@ -141,27 +143,41 @@ public sealed partial class Mpv : IDisposable
 
     // ---- teardown ----------------------------------------------------------
 
+    /// <summary>
+    /// Idempotent and completing: every caller, including a concurrent one, returns only after the
+    /// owned child is stopped and the owned socket removed. The first caller does the teardown
+    /// (bounded by the child's exit wait); concurrent callers wait on <see cref="_teardown"/>, which
+    /// is never taken while holding <see cref="_gate"/>.
+    /// </summary>
     public void Dispose()
     {
         lock (_gate)
         {
-            if (_disposed)
-                return;
-            _disposed = true;
-            _timerSeq++;
-            _streamTimer?.Dispose();
+            if (!_disposed)
+            {
+                _disposed = true;
+                _timerSeq++;
+                _streamTimer?.Dispose();
+            }
         }
 
-        _life.Cancel();
-        _socket.Dispose();
-        FailPending(new MpvException(MpvFailureKind.ConnectionClosed, "mpv player was disposed."));
+        lock (_teardown)
+        {
+            if (_tornDown)
+                return;
+            _tornDown = true;
 
-        if (_child is not null)
-            StopChild(_child);
+            _life.Cancel();
+            _socket.Dispose();
+            FailPending(new MpvException(MpvFailureKind.ConnectionClosed, "mpv player was disposed."));
 
-        if (_ownsSocket)
-            TryDelete(_socketPath);
+            if (_child is not null)
+                StopChild(_child);
 
-        _life.Dispose();
+            if (_ownsSocket)
+                TryDelete(_socketPath);
+
+            _life.Dispose();
+        }
     }
 }
