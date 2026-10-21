@@ -24,9 +24,9 @@ public class AlbumPlaybackTests : IDisposable
         Reply: TimeSpan.FromMilliseconds(300),
         StreamStart: TimeSpan.FromMilliseconds(400));
 
-    // Normal replies get the production allowance so a slow scheduler cannot fail rig setup; only the
-    // explicit reply-deadline test uses Fast.
-    private static readonly MpvTimeouts Normal = Fast with { Reply = TimeSpan.FromSeconds(5) };
+    // Normal replies and stream start get the production allowances so a slow scheduler cannot fail
+    // rig setup; only the explicit deadline tests (Uncertain_outcome, Accepted_playlist) use Fast.
+    private static readonly MpvTimeouts Normal = Fast with { Reply = TimeSpan.FromSeconds(5), StreamStart = TimeSpan.FromSeconds(20) };
 
     private readonly string _dir = Path.Combine("/tmp", "lp-" + Guid.NewGuid().ToString("N")[..8]);
     private readonly List<IDisposable> _disposables = [];
@@ -417,7 +417,7 @@ public class AlbumPlaybackTests : IDisposable
     [Fact]
     public async Task Accepted_playlist_without_load_or_terminal_event_fails_at_the_stream_deadline_and_never_plays()
     {
-        var rig = await BuildAsync();
+        var rig = await BuildAsync(timeouts: Fast);
         var statuses = new List<MpvStatus>();
         rig.Mpv.StatusChanged += statuses.Add;
 
