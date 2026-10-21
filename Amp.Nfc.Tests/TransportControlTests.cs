@@ -11,10 +11,12 @@ namespace Amp.Nfc.Tests;
 // assumed here, nor that any physical controller sends the codes used below (LUC-08, LUC-12).
 public class TransportControlTests : IDisposable
 {
+    // No test here exercises the reply deadline; normal replies get the production allowance so a
+    // slow scheduler cannot turn rig setup into an album-load failure.
     private static readonly MpvTimeouts Fast = new(
         Connect: TimeSpan.FromMilliseconds(500),
         Send: TimeSpan.FromMilliseconds(500),
-        Reply: TimeSpan.FromMilliseconds(500),
+        Reply: TimeSpan.FromSeconds(5),
         StreamStart: TimeSpan.FromSeconds(30));
 
     // Codes used only by these tests; the product has no default codes.

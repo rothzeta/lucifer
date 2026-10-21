@@ -24,6 +24,10 @@ public class AlbumPlaybackTests : IDisposable
         Reply: TimeSpan.FromMilliseconds(300),
         StreamStart: TimeSpan.FromMilliseconds(400));
 
+    // Normal replies and stream start get the production allowances so a slow scheduler cannot fail
+    // rig setup; only the explicit deadline tests (Uncertain_outcome, Accepted_playlist) use Fast.
+    private static readonly MpvTimeouts Normal = Fast with { Reply = TimeSpan.FromSeconds(5), StreamStart = TimeSpan.FromSeconds(20) };
+
     private readonly string _dir = Path.Combine("/tmp", "lp-" + Guid.NewGuid().ToString("N")[..8]);
     private readonly List<IDisposable> _disposables = [];
 
@@ -130,7 +134,7 @@ public class AlbumPlaybackTests : IDisposable
 
         var peer = new FakeMpvPeer(Path.Combine(_dir, "m.sock"));
         _disposables.Add(peer);
-        var mpv = await Mpv.ConnectAsync(peer.Path, timeouts ?? Fast, TimeSpan.FromSeconds(2), CancellationToken.None);
+        var mpv = await Mpv.ConnectAsync(peer.Path, timeouts ?? Normal, TimeSpan.FromSeconds(2), CancellationToken.None);
         _disposables.Add(mpv);
 
         var stub = new Http(http ?? ((id, _) => Task.FromResult(id switch
@@ -209,9 +213,10 @@ public class AlbumPlaybackTests : IDisposable
     private static async Task PlayA(Rig rig)
     {
         await rig.Present("04AA", ReleaseA);
-        // Present only waits a bounded 100 ms for the apply to go idle; on a loaded machine the apply
-        // may still be running, so wait for the observable queue instead of assuming it is done.
-        Assert.Equal(["tA1", "tA2", "tA3"], await Eventually(() => rig.QueueIds, q => q.Length == 3, ms: 10000));
+        // Present's 100 ms bounded wait may return early; wait for the apply itself to finish (its
+        // last request is pause=false) so the queue and request log are settled.
+        await rig.Controller.WhenIdleAsync().WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(["tA1", "tA2", "tA3"], rig.QueueIds);
         await rig.Peer.Last!.EventAsync("start-file", new { playlist_entry_id = rig.Peer.NextEntryId - 2 });
         await rig.Peer.Last!.EventAsync("file-loaded");
         Assert.Equal(MpvStatus.Playing, await Eventually(() => rig.Mpv.Status, s => s == MpvStatus.Playing));
@@ -229,6 +234,7 @@ public class AlbumPlaybackTests : IDisposable
         await PlayA(rig);
 
         await rig.Present("04BB", ReleaseB);
+        await rig.Controller.WhenIdleAsync().WaitAsync(TimeSpan.FromSeconds(10));
 
         Assert.Equal(["tB1", "tB2"], rig.QueueIds);
         var loads = rig.Peer.Requests.Where(r => r.Name == "loadfile").ToArray();
@@ -246,6 +252,7 @@ public class AlbumPlaybackTests : IDisposable
         Assert.Equal(MpvStatus.Paused, await Eventually(() => rig.Mpv.Status, s => s == MpvStatus.Paused));
 
         await rig.Present("04BB", ReleaseB);
+        await rig.Controller.WhenIdleAsync().WaitAsync(TimeSpan.FromSeconds(10));
 
         Assert.Equal(["tB1", "tB2"], rig.QueueIds);
         Assert.False(rig.Paused);
@@ -375,7 +382,7 @@ public class AlbumPlaybackTests : IDisposable
     [Fact]
     public async Task Uncertain_outcome_is_reconciled_before_any_new_load_and_never_replayed_blindly()
     {
-        var rig = await BuildAsync();
+        var rig = await BuildAsync(timeouts: Fast);
         var drop = true;
         var inner = rig.Peer.Handler!;
         rig.Peer.Handler = async (req, conn) =>
@@ -413,7 +420,7 @@ public class AlbumPlaybackTests : IDisposable
     [Fact]
     public async Task Accepted_playlist_without_load_or_terminal_event_fails_at_the_stream_deadline_and_never_plays()
     {
-        var rig = await BuildAsync();
+        var rig = await BuildAsync(timeouts: Fast);
         var statuses = new List<MpvStatus>();
         rig.Mpv.StatusChanged += statuses.Add;
 
@@ -436,6 +443,7 @@ public class AlbumPlaybackTests : IDisposable
     {
         var rig = await BuildAsync();
         await rig.Present("04AA", ReleaseA);
+        await rig.Controller.WhenIdleAsync().WaitAsync(TimeSpan.FromSeconds(10));
 
         await rig.Peer.Last!.EventAsync("end-file", new { reason = "error", playlist_entry_id = rig.Peer.NextEntryId - 2, file_error = "loading failed" });
 
@@ -457,18 +465,22 @@ public class AlbumPlaybackTests : IDisposable
             return Songs("tA", 3);
         });
 
-        var sw = Stopwatch.StartNew();
         rig.Reader.Current = ReaderObservation.Present("04AA", () => new(TagReadKind.Release, ReleaseId.Parse(ReleaseA)));
-        await rig.Controller.StepAsync(CancellationToken.None);
+        var first = rig.Controller.StepAsync(CancellationToken.None);
         rig.Clock.Advance(TimeSpan.FromMilliseconds(150));
-        await rig.Controller.StepAsync(CancellationToken.None);
-        Assert.True(sw.ElapsedMilliseconds < 500, "scanning must not wait for preparation");
+        var second = rig.Controller.StepAsync(CancellationToken.None);
+        // A is stalled until releaseA is set, so a step that waited for preparation could not be complete here.
+        Assert.True(first.IsCompletedSuccessfully && second.IsCompletedSuccessfully, "scanning must not wait for preparation");
         await Eventually(() => rig.Http.AlbumRequests.Count, c => c == 1);
 
         await rig.Present("04BB", ReleaseB);
+        // A is still stalled, so full idle is impossible here; wait for B's own commit instead.
+        Assert.Equal(ReleaseId.Parse(ReleaseB),
+            await Eventually(() => rig.Controller.AppliedRelease, r => r == ReleaseId.Parse(ReleaseB), ms: 10_000));
         Assert.Equal(["tB1", "tB2"], rig.QueueIds);
 
         releaseA.SetResult();
+        await rig.Controller.WhenIdleAsync().WaitAsync(TimeSpan.FromSeconds(10));
         await Task.Delay(200);
         await rig.Ticks(3);
 
@@ -575,7 +587,7 @@ public class AlbumPlaybackTests : IDisposable
         await Task.Delay(100);
         Assert.False(transport.IsCompleted);
         go.SetResult();
-        await transport;
+        Assert.Equal(TransportOutcome.Applied, await transport);
         await rig.Controller.WhenIdleAsync();
 
         var requests = rig.Peer.Requests.ToList();
@@ -665,6 +677,7 @@ public class AlbumPlaybackTests : IDisposable
             ? $"Player: failed — {rig.Mpv.FailureDetail}"
             : $"Player: {status.ToString().ToLowerInvariant()}");
         await rig.Present("04AA", ReleaseA);
+        await rig.Controller.WhenIdleAsync().WaitAsync(TimeSpan.FromSeconds(10));
         var loaded = rig.Peer.Requests.First(r => r.Name == "loadfile").Command[1].GetString()!;
         Assert.Matches(@"[?&]t=", loaded); // the URL really carries the credential
 
