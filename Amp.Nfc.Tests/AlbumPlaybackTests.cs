@@ -213,9 +213,10 @@ public class AlbumPlaybackTests : IDisposable
     private static async Task PlayA(Rig rig)
     {
         await rig.Present("04AA", ReleaseA);
-        // Present only waits a bounded 100 ms for the apply to go idle; on a loaded machine the apply
-        // may still be running, so wait for the observable queue instead of assuming it is done.
-        Assert.Equal(["tA1", "tA2", "tA3"], await Eventually(() => rig.QueueIds, q => q.Length == 3, ms: 10000));
+        // Present's 100 ms bounded wait may return early; wait for the apply itself to finish (its
+        // last request is pause=false) so the queue and request log are settled.
+        await rig.Controller.WhenIdleAsync().WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(["tA1", "tA2", "tA3"], rig.QueueIds);
         await rig.Peer.Last!.EventAsync("start-file", new { playlist_entry_id = rig.Peer.NextEntryId - 2 });
         await rig.Peer.Last!.EventAsync("file-loaded");
         Assert.Equal(MpvStatus.Playing, await Eventually(() => rig.Mpv.Status, s => s == MpvStatus.Playing));
