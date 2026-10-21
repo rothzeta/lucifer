@@ -251,6 +251,7 @@ public class AlbumPlaybackTests : IDisposable
         Assert.Equal(MpvStatus.Paused, await Eventually(() => rig.Mpv.Status, s => s == MpvStatus.Paused));
 
         await rig.Present("04BB", ReleaseB);
+        await rig.Controller.WhenIdleAsync().WaitAsync(TimeSpan.FromSeconds(10));
 
         Assert.Equal(["tB1", "tB2"], rig.QueueIds);
         Assert.False(rig.Paused);
@@ -441,6 +442,7 @@ public class AlbumPlaybackTests : IDisposable
     {
         var rig = await BuildAsync();
         await rig.Present("04AA", ReleaseA);
+        await rig.Controller.WhenIdleAsync().WaitAsync(TimeSpan.FromSeconds(10));
 
         await rig.Peer.Last!.EventAsync("end-file", new { reason = "error", playlist_entry_id = rig.Peer.NextEntryId - 2, file_error = "loading failed" });
 
@@ -474,6 +476,7 @@ public class AlbumPlaybackTests : IDisposable
         Assert.Equal(["tB1", "tB2"], rig.QueueIds);
 
         releaseA.SetResult();
+        await rig.Controller.WhenIdleAsync().WaitAsync(TimeSpan.FromSeconds(10));
         await Task.Delay(200);
         await rig.Ticks(3);
 
@@ -670,6 +673,7 @@ public class AlbumPlaybackTests : IDisposable
             ? $"Player: failed — {rig.Mpv.FailureDetail}"
             : $"Player: {status.ToString().ToLowerInvariant()}");
         await rig.Present("04AA", ReleaseA);
+        await rig.Controller.WhenIdleAsync().WaitAsync(TimeSpan.FromSeconds(10));
         var loaded = rig.Peer.Requests.First(r => r.Name == "loadfile").Command[1].GetString()!;
         Assert.Matches(@"[?&]t=", loaded); // the URL really carries the credential
 
