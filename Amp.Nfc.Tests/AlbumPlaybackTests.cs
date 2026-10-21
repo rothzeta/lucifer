@@ -234,6 +234,7 @@ public class AlbumPlaybackTests : IDisposable
         await PlayA(rig);
 
         await rig.Present("04BB", ReleaseB);
+        await rig.Controller.WhenIdleAsync().WaitAsync(TimeSpan.FromSeconds(10));
 
         Assert.Equal(["tB1", "tB2"], rig.QueueIds);
         var loads = rig.Peer.Requests.Where(r => r.Name == "loadfile").ToArray();
@@ -464,15 +465,18 @@ public class AlbumPlaybackTests : IDisposable
             return Songs("tA", 3);
         });
 
-        var sw = Stopwatch.StartNew();
         rig.Reader.Current = ReaderObservation.Present("04AA", () => new(TagReadKind.Release, ReleaseId.Parse(ReleaseA)));
-        await rig.Controller.StepAsync(CancellationToken.None);
+        var first = rig.Controller.StepAsync(CancellationToken.None);
         rig.Clock.Advance(TimeSpan.FromMilliseconds(150));
-        await rig.Controller.StepAsync(CancellationToken.None);
-        Assert.True(sw.ElapsedMilliseconds < 500, "scanning must not wait for preparation");
+        var second = rig.Controller.StepAsync(CancellationToken.None);
+        // A is stalled until releaseA is set, so a step that waited for preparation could not be complete here.
+        Assert.True(first.IsCompletedSuccessfully && second.IsCompletedSuccessfully, "scanning must not wait for preparation");
         await Eventually(() => rig.Http.AlbumRequests.Count, c => c == 1);
 
         await rig.Present("04BB", ReleaseB);
+        // A is still stalled, so full idle is impossible here; wait for B's own commit instead.
+        Assert.Equal(ReleaseId.Parse(ReleaseB),
+            await Eventually(() => rig.Controller.AppliedRelease, r => r == ReleaseId.Parse(ReleaseB), ms: 10_000));
         Assert.Equal(["tB1", "tB2"], rig.QueueIds);
 
         releaseA.SetResult();
